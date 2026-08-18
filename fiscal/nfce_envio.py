@@ -190,6 +190,8 @@ def enviar_nfce(
         # ==========================================
         # CERTIFICADO
         # ==========================================
+        log("Preparando certificado para comunicação com SEFAZ")
+
         cert_pem, key_pem = (
             _pfx_para_pem(
                 certificado_path,
@@ -197,9 +199,13 @@ def enviar_nfce(
             )
         )
 
+        log("Certificado preparado")
+
         # ==========================================
         # XML ASSINADO
         # ==========================================
+        log("Convertendo XML assinado para string")
+
         xml_str = xml_assinado.decode(
             "utf-8"
         )
@@ -220,8 +226,56 @@ def enviar_nfce(
         xml_str = xml_str.strip()
 
         # ==========================================
+        # DEBUG XML NFC-e
+        # ==========================================
+        print("\n")
+        print("=" * 100)
+        print(
+            "================ XML NFC-e ASSINADO "
+            "ANTES DO enviNFe ================"
+        )
+        print("=" * 100)
+
+        print(xml_str)
+
+        print("=" * 100)
+        print(
+            "================ FIM XML NFC-e "
+            "ASSINADO ============================="
+        )
+        print("=" * 100)
+        print("\n")
+
+        # ==========================================
+        # TENTA VALIDAR SINTAXE XML
+        # ==========================================
+        log("Validando sintaxe do XML assinado")
+
+        try:
+
+            etree.fromstring(
+                xml_str.encode("utf-8")
+            )
+
+            log(
+                "XML assinado possui sintaxe XML válida"
+            )
+
+        except Exception as xml_error:
+
+            log(
+                "ERRO DE SINTAXE NO XML ASSINADO"
+            )
+
+            log(str(xml_error))
+
+            raise
+
+        # ==========================================
         # ENVI NFE
         # ==========================================
+        log("Montando lote enviNFe")
+
         envi_nfe = f"""
 <enviNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">
 
@@ -235,8 +289,56 @@ def enviar_nfce(
 """.strip()
 
         # ==========================================
+        # DEBUG LOTE
+        # ==========================================
+        print("\n")
+        print("=" * 100)
+        print(
+            "================ XML DO LOTE enviNFe "
+            "================"
+        )
+        print("=" * 100)
+
+        print(envi_nfe)
+
+        print("=" * 100)
+        print(
+            "================ FIM DO LOTE enviNFe "
+            "================="
+        )
+        print("=" * 100)
+        print("\n")
+
+        # ==========================================
+        # VALIDA SINTAXE DO LOTE
+        # ==========================================
+        log("Validando sintaxe XML do lote enviNFe")
+
+        try:
+
+            etree.fromstring(
+                envi_nfe.encode("utf-8")
+            )
+
+            log(
+                "Lote enviNFe possui sintaxe XML válida"
+            )
+
+        except Exception as lote_error:
+
+            log(
+                "ERRO DE SINTAXE NO LOTE enviNFe"
+            )
+
+            log(str(lote_error))
+
+            raise
+
+        # ==========================================
         # SOAP 1.2
         # ==========================================
+        log("Montando envelope SOAP 1.2")
+
         soap = f"""
 <soap12:Envelope
 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -279,14 +381,53 @@ xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4">
         # ==========================================
         # DEBUG SOAP
         # ==========================================
-        log("===== SOAP ENVIADO =====")
+        print("\n")
+        print("=" * 100)
+        print(
+            "================ SOAP COMPLETO ENVIADO "
+            "À SEFAZ ================"
+        )
+        print("=" * 100)
 
-        log(soap[:10000])
+        print(soap)
+
+        print("=" * 100)
+        print(
+            "================ FIM SOAP "
+            "================"
+        )
+        print("=" * 100)
+        print("\n")
+
+        # ==========================================
+        # VALIDA SINTAXE SOAP
+        # ==========================================
+        log("Validando sintaxe XML do SOAP")
+
+        try:
+
+            etree.fromstring(
+                soap.encode("utf-8")
+            )
+
+            log(
+                "SOAP possui sintaxe XML válida"
+            )
+
+        except Exception as soap_error:
+
+            log(
+                "ERRO DE SINTAXE NO SOAP"
+            )
+
+            log(str(soap_error))
+
+            raise
 
         # ==========================================
         # ENVIO
         # ==========================================
-        log("Enviando requisição")
+        log("Enviando requisição para SEFAZ")
 
         response = requests.post(
 
@@ -308,14 +449,36 @@ xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4">
             timeout=120
         )
 
+        # ==========================================
+        # RESPOSTA HTTP
+        # ==========================================
         log(
             f"HTTP STATUS: "
             f"{response.status_code}"
         )
 
-        log("===== RESPOSTA SEFAZ =====")
+        log(
+            f"CONTENT-TYPE: "
+            f"{response.headers.get('content-type')}"
+        )
 
-        log(response.text[:10000])
+        print("\n")
+        print("=" * 100)
+        print(
+            "================ RESPOSTA COMPLETA "
+            "SEFAZ ================"
+        )
+        print("=" * 100)
+
+        print(response.text)
+
+        print("=" * 100)
+        print(
+            "================ FIM RESPOSTA "
+            "SEFAZ ================"
+        )
+        print("=" * 100)
+        print("\n")
 
         # ==========================================
         # ERRO HTTP
@@ -331,6 +494,8 @@ xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4">
         # ==========================================
         # XML RETORNO
         # ==========================================
+        log("Interpretando XML retornado pela SEFAZ")
+
         retorno_xml = etree.fromstring(
             response.content
         )
@@ -351,20 +516,46 @@ xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4">
             namespaces=ns
         )
 
-        log(f"cStat: {cStat}")
+        log(
+            f"cStat recebido: [{cStat}]"
+        )
 
-        log(f"xMotivo: {xMotivo}")
+        log(
+            f"xMotivo recebido: [{xMotivo}]"
+        )
 
         # ==========================================
         # REJEIÇÃO
         # ==========================================
         if cStat != "100":
 
+            print("\n")
+            print("!" * 100)
+            print(
+                "================ NFC-e REJEITADA "
+                "================"
+            )
+            print("!" * 100)
+
+            print(
+                f"cStat: {cStat}"
+            )
+
+            print(
+                f"xMotivo: {xMotivo}"
+            )
+
+            print("!" * 100)
+            print("\n")
+
             raise Exception(
                 f"NFC-e rejeitada: "
                 f"{cStat} - {xMotivo}"
             )
 
+        # ==========================================
+        # PROTOCOLO
+        # ==========================================
         protocolo = retorno_xml.findtext(
             ".//nfe:nProt",
             namespaces=ns
@@ -375,11 +566,19 @@ xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4">
             namespaces=ns
         )
 
-        log(f"CHAVE: {chave}")
+        log(
+            f"PROTOCOLO: {protocolo}"
+        )
+
+        log(
+            f"CHAVE: {chave}"
+        )
 
         # ==========================================
         # QR CODE
         # ==========================================
+        log("Gerando QR Code da NFC-e")
+
         qr_base = (
 
             f"chNFe={chave}"
@@ -411,7 +610,28 @@ xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4">
             f"&cHashQRCode={hash_b64}"
         )
 
-        log("===== NFC-e AUTORIZADA =====")
+        log(
+            f"QR CODE URL: {qr_code_url}"
+        )
+
+        print("\n")
+        print("=" * 100)
+        print(
+            "================ NFC-e AUTORIZADA "
+            "================"
+        )
+        print("=" * 100)
+
+        print(
+            f"CHAVE: {chave}"
+        )
+
+        print(
+            f"PROTOCOLO: {protocolo}"
+        )
+
+        print("=" * 100)
+        print("\n")
 
         return {
 
@@ -433,6 +653,29 @@ xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4">
         }
 
     except Exception as e:
+
+        print("\n")
+        print("!" * 100)
+        print(
+            "================ ERRO NO ENVIO NFC-e "
+            "================"
+        )
+        print("!" * 100)
+
+        print(
+            f"TIPO: {type(e).__name__}"
+        )
+
+        print(
+            f"MENSAGEM: {str(e)}"
+        )
+
+        print(
+            f"REPR: {repr(e)}"
+        )
+
+        print("!" * 100)
+        print("\n")
 
         log("===== ERRO NFC-e =====")
 
