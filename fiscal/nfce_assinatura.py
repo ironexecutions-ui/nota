@@ -30,7 +30,7 @@ def assinar_xml(
     senha
 ):
     """
-    Assina XML NFC-e no padrão XMLDSig utilizado pela NF-e/NFC-e.
+    Assina XML NFC-e usando XMLDSig.
     """
 
     log("===== INÍCIO ASSINATURA XML =====")
@@ -87,7 +87,9 @@ def assinar_xml(
                 f"{len(additional_certificates)}"
             )
         else:
-            log("Nenhum certificado adicional será enviado")
+            log(
+                "Nenhum certificado adicional será enviado"
+            )
 
         # ==========================================
         # 3. CERTIFICADO PEM
@@ -101,9 +103,9 @@ def assinar_xml(
         log("Certificado convertido para PEM")
 
         # ==========================================
-        # 4. PARSE XML
+        # 4. PREPARA XML
         # ==========================================
-        log("ETAPA 4: Fazendo parse do XML")
+        log("ETAPA 4: Preparando XML")
 
         if isinstance(xml_bytes, str):
             xml_bytes = xml_bytes.encode("utf-8")
@@ -178,17 +180,17 @@ def assinar_xml(
         # ==========================================
         log("ETAPA 7: Configurando XMLDSig")
 
-        log("SignatureMethod: RSA-SHA1")
-        log("DigestMethod: SHA1")
+        log("SignatureMethod: RSA-SHA256")
+        log("DigestMethod: SHA256")
         log("Canonicalization: C14N 1.0")
         log("Método: Enveloped")
 
         signer = XMLSigner(
             method=methods.enveloped,
 
-            signature_algorithm="rsa-sha1",
+            signature_algorithm="rsa-sha256",
 
-            digest_algorithm="sha1",
+            digest_algorithm="sha256",
 
             c14n_algorithm=(
                 "http://www.w3.org/TR/"
@@ -276,7 +278,7 @@ def assinar_xml(
         log("infNFe substituído")
 
         # ==========================================
-        # 12. SIGNATURE DEPOIS DO infNFe
+        # 12. POSICIONA SIGNATURE
         # ==========================================
         log(
             "ETAPA 12: Inserindo Signature "
@@ -298,7 +300,7 @@ def assinar_xml(
         )
 
         # ==========================================
-        # 13. VALIDA POSIÇÃO
+        # 13. VALIDA ESTRUTURA
         # ==========================================
         log(
             "ETAPA 13: Validando estrutura "
@@ -327,7 +329,7 @@ def assinar_xml(
             )
 
         # ==========================================
-        # 14. VALIDA ALGORITMOS GERADOS
+        # 14. CONFERE ALGORITMOS
         # ==========================================
         log(
             "ETAPA 14: Conferindo algoritmos "
@@ -397,7 +399,7 @@ def assinar_xml(
         log("XML final possui sintaxe válida")
 
         # ==========================================
-        # DEBUG
+        # DEBUG FINAL
         # ==========================================
         print("\n")
         print("=" * 100)
@@ -434,15 +436,19 @@ def assinar_xml(
             "ASSINATURA NFC-e ==============="
         )
         print("!" * 100)
+
         print(
             f"TIPO: {type(e).__name__}"
         )
+
         print(
             f"MENSAGEM: {str(e)}"
         )
+
         print(
             f"REPR: {repr(e)}"
         )
+
         print("!" * 100)
         print("\n")
 
