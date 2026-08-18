@@ -761,6 +761,10 @@ def gerar_xml_nfce(dados, qr_code_url):
 
         "vST": "0.00",
 
+        "vFCPST": "0.00",
+
+        "vFCPSTRet": "0.00",
+
         "vProd": f"{total_produtos:.2f}",
 
         "vFrete": "0.00",
@@ -773,15 +777,17 @@ def gerar_xml_nfce(dados, qr_code_url):
 
         "vIPI": "0.00",
 
+        "vIPIDevol": "0.00",
+
         "vPIS": "0.00",
 
         "vCOFINS": "0.00",
 
         "vOutro": "0.00",
 
-        "vTotTrib": "0.00",
+        "vNF": f"{total_produtos:.2f}",
 
-        "vNF": f"{total_produtos:.2f}"
+        "vTotTrib": "0.00"
     }
 
     for tag, valor in campos_total.items():
@@ -790,7 +796,6 @@ def gerar_xml_nfce(dados, qr_code_url):
             icmsTot,
             tag
         ).text = valor
-
     # ==========================================
     # TRANSPORTE
     # ==========================================
