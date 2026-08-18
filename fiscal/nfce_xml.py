@@ -7,6 +7,23 @@ import random
 
 
 # ==========================================
+# CONSTANTES XML
+# ==========================================
+NFE_NS = "http://www.portalfiscal.inf.br/nfe"
+
+
+# ==========================================
+# LOG
+# ==========================================
+def log(msg):
+    print(
+        f"[NFCe-XML]"
+        f"[{datetime.now().strftime('%H:%M:%S')}] "
+        f"{msg}"
+    )
+
+
+# ==========================================
 # LIMPEZA
 # ==========================================
 def somente_numeros(valor):
@@ -14,7 +31,11 @@ def somente_numeros(valor):
     if valor is None:
         return ""
 
-    return re.sub(r"\D", "", str(valor))
+    return re.sub(
+        r"\D",
+        "",
+        str(valor)
+    )
 
 
 def limpar_texto_xml(texto):
@@ -38,6 +59,31 @@ def limpar_texto_xml(texto):
 
 
 # ==========================================
+# CRIA ELEMENTO NO NAMESPACE NFE
+# ==========================================
+def criar_elemento(
+    pai,
+    nome,
+    texto=None,
+    **atributos
+):
+
+    elemento = etree.SubElement(
+        pai,
+        etree.QName(
+            NFE_NS,
+            nome
+        ),
+        **atributos
+    )
+
+    if texto is not None:
+        elemento.text = str(texto)
+
+    return elemento
+
+
+# ==========================================
 # PAGAMENTO
 # ==========================================
 def mapear_tpag(pagamento):
@@ -45,9 +91,14 @@ def mapear_tpag(pagamento):
     if pagamento is None:
         return "99"
 
-    pagamento = str(pagamento).strip().lower()
+    pagamento = (
+        str(pagamento)
+        .strip()
+        .lower()
+    )
 
     mapa = {
+
         "dinheiro": "01",
 
         "cheque": "02",
@@ -68,25 +119,46 @@ def mapear_tpag(pagamento):
         "outro": "99"
     }
 
-    return mapa.get(pagamento, "99")
+    return mapa.get(
+        pagamento,
+        "99"
+    )
 
 
 # ==========================================
 # ICMS
 # ==========================================
-def gerar_icms(imposto, item, origem, cst_csosn):
+def gerar_icms(
+    imposto,
+    item,
+    origem,
+    cst_csosn
+):
 
-    icms = etree.SubElement(
+    log(
+        f"Gerando ICMS do produto "
+        f"{item.get('id')}"
+    )
+
+    icms = criar_elemento(
         imposto,
         "ICMS"
     )
 
     crt = str(
-        item.get("crt", "")
+        item.get(
+            "crt",
+            ""
+        )
     ).strip()
 
     codigo = somente_numeros(
         cst_csosn
+    )
+
+    log(
+        f"CRT: {crt} | "
+        f"CST/CSOSN: {codigo}"
     )
 
     # ==========================================
@@ -95,7 +167,7 @@ def gerar_icms(imposto, item, origem, cst_csosn):
     if crt == "1":
 
         # ==========================================
-        # CSOSN 102, 103, 300 e 400
+        # CSOSN 102 / 103 / 300 / 400
         # ==========================================
         if codigo in [
             "102",
@@ -104,20 +176,27 @@ def gerar_icms(imposto, item, origem, cst_csosn):
             "400"
         ]:
 
-            grupo = etree.SubElement(
+            grupo = criar_elemento(
                 icms,
                 "ICMSSN102"
             )
 
-            etree.SubElement(
+            criar_elemento(
                 grupo,
-                "orig"
-            ).text = origem
+                "orig",
+                origem
+            )
 
-            etree.SubElement(
+            criar_elemento(
                 grupo,
-                "CSOSN"
-            ).text = codigo
+                "CSOSN",
+                codigo
+            )
+
+            log(
+                f"ICMSSN102 gerado "
+                f"com CSOSN {codigo}"
+            )
 
             return
 
@@ -126,20 +205,24 @@ def gerar_icms(imposto, item, origem, cst_csosn):
         # ==========================================
         if codigo == "500":
 
-            grupo = etree.SubElement(
+            grupo = criar_elemento(
                 icms,
                 "ICMSSN500"
             )
 
-            etree.SubElement(
+            criar_elemento(
                 grupo,
-                "orig"
-            ).text = origem
+                "orig",
+                origem
+            )
 
-            etree.SubElement(
+            criar_elemento(
                 grupo,
-                "CSOSN"
-            ).text = codigo
+                "CSOSN",
+                codigo
+            )
+
+            log("ICMSSN500 gerado")
 
             return
 
@@ -151,52 +234,61 @@ def gerar_icms(imposto, item, origem, cst_csosn):
     # ==========================================
     # REGIME NORMAL
     # ==========================================
-    if crt in ["2", "3"]:
+    if crt in [
+        "2",
+        "3"
+    ]:
 
         # ==========================================
         # CST 00
         # ==========================================
         if codigo == "00":
 
-            grupo = etree.SubElement(
+            grupo = criar_elemento(
                 icms,
                 "ICMS00"
             )
 
-            etree.SubElement(
+            criar_elemento(
                 grupo,
-                "orig"
-            ).text = origem
+                "orig",
+                origem
+            )
 
-            etree.SubElement(
+            criar_elemento(
                 grupo,
-                "CST"
-            ).text = codigo
+                "CST",
+                codigo
+            )
 
-            etree.SubElement(
+            criar_elemento(
                 grupo,
-                "modBC"
-            ).text = "3"
+                "modBC",
+                "3"
+            )
 
-            etree.SubElement(
+            criar_elemento(
                 grupo,
-                "vBC"
-            ).text = "0.00"
+                "vBC",
+                "0.00"
+            )
 
-            etree.SubElement(
+            criar_elemento(
                 grupo,
-                "pICMS"
-            ).text = "0.00"
+                "pICMS",
+                "0.00"
+            )
 
-            etree.SubElement(
+            criar_elemento(
                 grupo,
-                "vICMS"
-            ).text = "0.00"
+                "vICMS",
+                "0.00"
+            )
 
             return
 
         # ==========================================
-        # CST 40, 41 e 50
+        # CST 40 / 41 / 50
         # ==========================================
         if codigo in [
             "40",
@@ -204,20 +296,22 @@ def gerar_icms(imposto, item, origem, cst_csosn):
             "50"
         ]:
 
-            grupo = etree.SubElement(
+            grupo = criar_elemento(
                 icms,
                 "ICMS40"
             )
 
-            etree.SubElement(
+            criar_elemento(
                 grupo,
-                "orig"
-            ).text = origem
+                "orig",
+                origem
+            )
 
-            etree.SubElement(
+            criar_elemento(
                 grupo,
-                "CST"
-            ).text = codigo
+                "CST",
+                codigo
+            )
 
             return
 
@@ -234,21 +328,77 @@ def gerar_icms(imposto, item, origem, cst_csosn):
 # ==========================================
 # XML NFC-e
 # ==========================================
-def gerar_xml_nfce(dados, qr_code_url):
+def gerar_xml_nfce(
+    dados,
+    qr_code_url=None
+):
+
+    print("\n")
+    print("=" * 100)
+    print("=============== INÍCIO GERAÇÃO XML NFC-e ===============")
+    print("=" * 100)
 
     comercio = dados["comercio"]
     fiscal = dados["fiscal"]
     itens = dados["itens"]
     venda = dados["venda"]
-    numero_nfce = dados["numero_nfce"]
 
-    chave_acesso = dados["chave_acesso"]
-    cNF = dados["cNF"]
-    cDV = dados["cDV"]
+    numero_nfce = dados[
+        "numero_nfce"
+    ]
+
+    chave_acesso = dados[
+        "chave_acesso"
+    ]
+
+    cNF = dados[
+        "cNF"
+    ]
+
+    cDV = dados[
+        "cDV"
+    ]
+
+    log(
+        f"Número NFC-e: {numero_nfce}"
+    )
+
+    log(
+        f"Chave: {chave_acesso}"
+    )
+
+    log(
+        f"cNF: {cNF}"
+    )
+
+    log(
+        f"cDV: {cDV}"
+    )
+
+    # ==========================================
+    # VALIDA CHAVE
+    # ==========================================
+    if len(str(chave_acesso)) != 44:
+
+        raise Exception(
+            "Chave de acesso deve possuir "
+            "44 dígitos"
+        )
+
+    if not str(
+        chave_acesso
+    ).isdigit():
+
+        raise Exception(
+            "Chave de acesso contém "
+            "caracteres inválidos"
+        )
 
     # ==========================================
     # LIMPEZA FISCAL
     # ==========================================
+    log("Preparando dados fiscais")
+
     cnpj = somente_numeros(
         comercio["cnpj"]
     )
@@ -286,24 +436,56 @@ def gerar_xml_nfce(dados, qr_code_url):
     ).strip()
 
     telefone = somente_numeros(
-        comercio.get("telefone", "")
+        comercio.get(
+            "telefone",
+            ""
+        )
     )
+
+    codigo_municipio = somente_numeros(
+        comercio[
+            "codigo_municipio"
+        ]
+    )
+
+    # ==========================================
+    # VALIDAÇÕES BÁSICAS
+    # ==========================================
+    if len(cnpj) != 14:
+
+        raise Exception(
+            f"CNPJ inválido para NFC-e: {cnpj}"
+        )
+
+    if not ie:
+
+        raise Exception(
+            "Inscrição Estadual não informada"
+        )
+
+    if len(codigo_municipio) != 7:
+
+        raise Exception(
+            f"Código IBGE do município inválido: "
+            f"{codigo_municipio}"
+        )
 
     # ==========================================
     # XML BASE
     # ==========================================
-    NFE = "http://www.portalfiscal.inf.br/nfe"
-
-    nsmap = {
-        None: NFE
-    }
+    log("Criando elemento raiz NFe")
 
     nfe = etree.Element(
-        "NFe",
-        nsmap=nsmap
+        etree.QName(
+            NFE_NS,
+            "NFe"
+        ),
+        nsmap={
+            None: NFE_NS
+        }
     )
 
-    infNFe = etree.SubElement(
+    infNFe = criar_elemento(
         nfe,
         "infNFe",
         Id=f"NFe{chave_acesso}",
@@ -313,257 +495,349 @@ def gerar_xml_nfce(dados, qr_code_url):
     # ==========================================
     # IDE
     # ==========================================
-    ide = etree.SubElement(
+    log("Gerando bloco ide")
+
+    ide = criar_elemento(
         infNFe,
         "ide"
     )
 
-    etree.SubElement(
+    criar_elemento(
         ide,
-        "cUF"
-    ).text = chave_acesso[:2]
-
-    etree.SubElement(
-        ide,
-        "cNF"
-    ).text = cNF
-
-    etree.SubElement(
-        ide,
-        "natOp"
-    ).text = "VENDA DE MERCADORIA"
-
-    etree.SubElement(
-        ide,
-        "mod"
-    ).text = "65"
-
-    etree.SubElement(
-        ide,
-        "serie"
-    ).text = str(
-        fiscal["serie_nfce"]
+        "cUF",
+        chave_acesso[:2]
     )
 
-    etree.SubElement(
+    criar_elemento(
         ide,
-        "nNF"
-    ).text = str(
-        numero_nfce
+        "cNF",
+        cNF
+    )
+
+    criar_elemento(
+        ide,
+        "natOp",
+        "VENDA DE MERCADORIA"
+    )
+
+    criar_elemento(
+        ide,
+        "mod",
+        "65"
+    )
+
+    criar_elemento(
+        ide,
+        "serie",
+        str(
+            fiscal["serie_nfce"]
+        )
+    )
+
+    criar_elemento(
+        ide,
+        "nNF",
+        str(
+            numero_nfce
+        )
     )
 
     dh_emi = datetime.now(
-        ZoneInfo("America/Sao_Paulo")
+        ZoneInfo(
+            "America/Sao_Paulo"
+        )
     ).replace(
         microsecond=0
     ).isoformat()
 
-    etree.SubElement(
+    criar_elemento(
         ide,
-        "dhEmi"
-    ).text = dh_emi
-
-    etree.SubElement(
-        ide,
-        "tpNF"
-    ).text = "1"
-
-    etree.SubElement(
-        ide,
-        "idDest"
-    ).text = "1"
-
-    etree.SubElement(
-        ide,
-        "cMunFG"
-    ).text = somente_numeros(
-        comercio["codigo_municipio"]
+        "dhEmi",
+        dh_emi
     )
 
-    etree.SubElement(
+    criar_elemento(
         ide,
-        "tpImp"
-    ).text = "4"
+        "tpNF",
+        "1"
+    )
 
-    etree.SubElement(
+    criar_elemento(
         ide,
-        "tpEmis"
-    ).text = "1"
+        "idDest",
+        "1"
+    )
 
-    etree.SubElement(
+    criar_elemento(
         ide,
-        "cDV"
-    ).text = cDV
+        "cMunFG",
+        codigo_municipio
+    )
 
-    etree.SubElement(
+    criar_elemento(
         ide,
-        "tpAmb"
-    ).text = (
+        "tpImp",
+        "4"
+    )
+
+    criar_elemento(
+        ide,
+        "tpEmis",
+        "1"
+    )
+
+    criar_elemento(
+        ide,
+        "cDV",
+        cDV
+    )
+
+    tp_amb = (
         "2"
-        if fiscal["ambiente_emissao"] == "homologacao"
+        if str(
+            fiscal["ambiente_emissao"]
+        ).strip().lower()
+        == "homologacao"
         else "1"
     )
 
-    etree.SubElement(
+    criar_elemento(
         ide,
-        "finNFe"
-    ).text = "1"
+        "tpAmb",
+        tp_amb
+    )
 
-    etree.SubElement(
+    criar_elemento(
         ide,
-        "indFinal"
-    ).text = "1"
+        "finNFe",
+        "1"
+    )
 
-    etree.SubElement(
+    criar_elemento(
         ide,
-        "indPres"
-    ).text = "1"
+        "indFinal",
+        "1"
+    )
 
-    etree.SubElement(
+    criar_elemento(
         ide,
-        "procEmi"
-    ).text = "0"
+        "indPres",
+        "1"
+    )
 
-    etree.SubElement(
+    criar_elemento(
         ide,
-        "verProc"
-    ).text = "IRON1"
+        "procEmi",
+        "0"
+    )
+
+    criar_elemento(
+        ide,
+        "verProc",
+        "IRON1.0"
+    )
+
+    log("Bloco ide concluído")
 
     # ==========================================
     # EMITENTE
     # ==========================================
-    emit = etree.SubElement(
+    log("Gerando emitente")
+
+    emit = criar_elemento(
         infNFe,
         "emit"
     )
 
-    etree.SubElement(
+    criar_elemento(
         emit,
-        "CNPJ"
-    ).text = cnpj
+        "CNPJ",
+        cnpj
+    )
 
-    etree.SubElement(
+    criar_elemento(
         emit,
-        "xNome"
-    ).text = razao_social
+        "xNome",
+        razao_social
+    )
 
-    etree.SubElement(
-        emit,
-        "xFant"
-    ).text = razao_social
+    nome_fantasia = limpar_texto_xml(
+        comercio.get(
+            "nome",
+            comercio.get(
+                "nome_fantasia",
+                razao_social
+            )
+        )
+    )
 
-    ender = etree.SubElement(
+    if nome_fantasia:
+
+        criar_elemento(
+            emit,
+            "xFant",
+            nome_fantasia
+        )
+
+    # ==========================================
+    # ENDEREÇO EMITENTE
+    # ==========================================
+    ender = criar_elemento(
         emit,
         "enderEmit"
     )
 
-    etree.SubElement(
+    criar_elemento(
         ender,
-        "xLgr"
-    ).text = rua
-
-    etree.SubElement(
-        ender,
-        "nro"
-    ).text = numero_endereco
-
-    etree.SubElement(
-        ender,
-        "xBairro"
-    ).text = bairro
-
-    etree.SubElement(
-        ender,
-        "cMun"
-    ).text = somente_numeros(
-        comercio["codigo_municipio"]
+        "xLgr",
+        rua
     )
 
-    etree.SubElement(
+    criar_elemento(
         ender,
-        "xMun"
-    ).text = cidade
+        "nro",
+        numero_endereco
+    )
 
-    etree.SubElement(
+    criar_elemento(
         ender,
-        "UF"
-    ).text = estado
+        "xBairro",
+        bairro
+    )
 
-    etree.SubElement(
+    criar_elemento(
         ender,
-        "CEP"
-    ).text = cep
+        "cMun",
+        codigo_municipio
+    )
 
-    etree.SubElement(
+    criar_elemento(
         ender,
-        "cPais"
-    ).text = "1058"
+        "xMun",
+        cidade
+    )
 
-    etree.SubElement(
+    criar_elemento(
         ender,
-        "xPais"
-    ).text = "BRASIL"
+        "UF",
+        estado
+    )
+
+    if cep:
+
+        criar_elemento(
+            ender,
+            "CEP",
+            cep
+        )
+
+    criar_elemento(
+        ender,
+        "cPais",
+        "1058"
+    )
+
+    criar_elemento(
+        ender,
+        "xPais",
+        "BRASIL"
+    )
 
     if telefone:
 
-        etree.SubElement(
+        criar_elemento(
             ender,
-            "fone"
-        ).text = telefone
+            "fone",
+            telefone
+        )
 
-    etree.SubElement(
+    criar_elemento(
         emit,
-        "IE"
-    ).text = ie
-
-    etree.SubElement(
-        emit,
-        "CRT"
-    ).text = str(
-        fiscal["crt"]
+        "IE",
+        ie
     )
+
+    criar_elemento(
+        emit,
+        "CRT",
+        str(
+            fiscal["crt"]
+        ).strip()
+    )
+
+    log("Emitente concluído")
 
     # ==========================================
     # DESTINATÁRIO
     # ==========================================
     cpf = somente_numeros(
-        venda.get("cpf_consumidor")
+        venda.get(
+            "cpf_consumidor"
+        )
     )
 
     if cpf:
 
-        dest = etree.SubElement(
+        log(
+            f"Gerando destinatário CPF: {cpf}"
+        )
+
+        if len(cpf) != 11:
+
+            raise Exception(
+                "CPF do consumidor inválido"
+            )
+
+        dest = criar_elemento(
             infNFe,
             "dest"
         )
 
-        etree.SubElement(
+        criar_elemento(
             dest,
-            "CPF"
-        ).text = cpf
+            "CPF",
+            cpf
+        )
 
-        etree.SubElement(
+        criar_elemento(
             dest,
-            "indIEDest"
-        ).text = "9"
+            "indIEDest",
+            "9"
+        )
+
+    else:
+
+        log(
+            "NFC-e sem identificação "
+            "do consumidor"
+        )
 
     # ==========================================
     # PRODUTOS
     # ==========================================
-    total_produtos = 0
+    log(
+        f"Gerando {len(itens)} item(ns)"
+    )
+
+    total_produtos = 0.0
 
     for idx, item in enumerate(
         itens,
         start=1
     ):
 
-        det = etree.SubElement(
+        log(
+            f"Gerando item {idx} | "
+            f"ID {item.get('id')}"
+        )
+
+        det = criar_elemento(
             infNFe,
             "det",
             nItem=str(idx)
         )
 
-        prod = etree.SubElement(
+        prod = criar_elemento(
             det,
             "prod"
         )
@@ -596,97 +870,140 @@ def gerar_xml_nfce(dados, qr_code_url):
             item["preco"]
         )
 
-        etree.SubElement(
+        if len(ncm) != 8:
+
+            raise Exception(
+                f"NCM inválido no produto "
+                f"{item.get('id')}: {ncm}"
+            )
+
+        if len(cfop) != 4:
+
+            raise Exception(
+                f"CFOP inválido no produto "
+                f"{item.get('id')}: {cfop}"
+            )
+
+        if quantidade <= 0:
+
+            raise Exception(
+                f"Quantidade inválida no produto "
+                f"{item.get('id')}"
+            )
+
+        if preco < 0:
+
+            raise Exception(
+                f"Preço inválido no produto "
+                f"{item.get('id')}"
+            )
+
+        criar_elemento(
             prod,
-            "cProd"
-        ).text = str(
-            item["id"]
+            "cProd",
+            str(
+                item["id"]
+            )
         )
 
-        etree.SubElement(
+        criar_elemento(
             prod,
-            "cEAN"
-        ).text = "SEM GTIN"
+            "cEAN",
+            "SEM GTIN"
+        )
 
-        etree.SubElement(
+        criar_elemento(
             prod,
-            "xProd"
-        ).text = nome_produto
+            "xProd",
+            nome_produto
+        )
 
-        etree.SubElement(
+        criar_elemento(
             prod,
-            "NCM"
-        ).text = ncm
+            "NCM",
+            ncm
+        )
 
-        etree.SubElement(
+        criar_elemento(
             prod,
-            "CFOP"
-        ).text = cfop
+            "CFOP",
+            cfop
+        )
 
-        etree.SubElement(
+        criar_elemento(
             prod,
-            "uCom"
-        ).text = "UN"
+            "uCom",
+            "UN"
+        )
 
-        etree.SubElement(
+        criar_elemento(
             prod,
-            "qCom"
-        ).text = f"{quantidade:.4f}"
+            "qCom",
+            f"{quantidade:.4f}"
+        )
 
-        etree.SubElement(
+        criar_elemento(
             prod,
-            "vUnCom"
-        ).text = f"{preco:.4f}"
+            "vUnCom",
+            f"{preco:.4f}"
+        )
 
         v_prod = (
             quantidade *
             preco
         )
 
-        etree.SubElement(
+        criar_elemento(
             prod,
-            "vProd"
-        ).text = f"{v_prod:.2f}"
+            "vProd",
+            f"{v_prod:.2f}"
+        )
 
-        etree.SubElement(
+        criar_elemento(
             prod,
-            "cEANTrib"
-        ).text = "SEM GTIN"
+            "cEANTrib",
+            "SEM GTIN"
+        )
 
-        etree.SubElement(
+        criar_elemento(
             prod,
-            "uTrib"
-        ).text = "UN"
+            "uTrib",
+            "UN"
+        )
 
-        etree.SubElement(
+        criar_elemento(
             prod,
-            "qTrib"
-        ).text = f"{quantidade:.4f}"
+            "qTrib",
+            f"{quantidade:.4f}"
+        )
 
-        etree.SubElement(
+        criar_elemento(
             prod,
-            "vUnTrib"
-        ).text = f"{preco:.4f}"
+            "vUnTrib",
+            f"{preco:.4f}"
+        )
 
-        etree.SubElement(
+        criar_elemento(
             prod,
-            "indTot"
-        ).text = "1"
+            "indTot",
+            "1"
+        )
 
         total_produtos += v_prod
 
         # ==========================================
         # IMPOSTOS
         # ==========================================
-        imposto = etree.SubElement(
+        imposto = criar_elemento(
             det,
             "imposto"
         )
 
-        etree.SubElement(
+        criar_elemento(
             imposto,
-            "vTotTrib"
-        ).text = "0.00"
+            "vTotTrib",
+            "0.00"
+        )
 
         # ==========================================
         # ICMS
@@ -701,131 +1018,200 @@ def gerar_xml_nfce(dados, qr_code_url):
         # ==========================================
         # PIS
         # ==========================================
-        pis = etree.SubElement(
+        pis = criar_elemento(
             imposto,
             "PIS"
         )
 
-        pis_nt = etree.SubElement(
+        pis_nt = criar_elemento(
             pis,
             "PISNT"
         )
 
-        etree.SubElement(
+        criar_elemento(
             pis_nt,
-            "CST"
-        ).text = "08"
+            "CST",
+            "08"
+        )
 
         # ==========================================
         # COFINS
         # ==========================================
-        cofins = etree.SubElement(
+        cofins = criar_elemento(
             imposto,
             "COFINS"
         )
 
-        cofins_nt = etree.SubElement(
+        cofins_nt = criar_elemento(
             cofins,
             "COFINSNT"
         )
 
-        etree.SubElement(
+        criar_elemento(
             cofins_nt,
-            "CST"
-        ).text = "08"
+            "CST",
+            "08"
+        )
+
+        log(
+            f"Item {idx} concluído | "
+            f"Valor: {v_prod:.2f}"
+        )
+
+    log(
+        f"Total dos produtos: "
+        f"{total_produtos:.2f}"
+    )
 
     # ==========================================
     # TOTAL
     # ==========================================
-    total = etree.SubElement(
+    log("Gerando total")
+
+    total = criar_elemento(
         infNFe,
         "total"
     )
 
-    icmsTot = etree.SubElement(
+    icmsTot = criar_elemento(
         total,
         "ICMSTot"
     )
 
-    campos_total = {
+    # IMPORTANTE:
+    # ordem das tags conforme estrutura do ICMSTot
+    campos_total = [
+        (
+            "vBC",
+            "0.00"
+        ),
+        (
+            "vICMS",
+            "0.00"
+        ),
+        (
+            "vICMSDeson",
+            "0.00"
+        ),
+        (
+            "vFCP",
+            "0.00"
+        ),
+        (
+            "vBCST",
+            "0.00"
+        ),
+        (
+            "vST",
+            "0.00"
+        ),
+        (
+            "vFCPST",
+            "0.00"
+        ),
+        (
+            "vFCPSTRet",
+            "0.00"
+        ),
+        (
+            "vProd",
+            f"{total_produtos:.2f}"
+        ),
+        (
+            "vFrete",
+            "0.00"
+        ),
+        (
+            "vSeg",
+            "0.00"
+        ),
+        (
+            "vDesc",
+            "0.00"
+        ),
+        (
+            "vII",
+            "0.00"
+        ),
+        (
+            "vIPI",
+            "0.00"
+        ),
+        (
+            "vIPIDevol",
+            "0.00"
+        ),
+        (
+            "vPIS",
+            "0.00"
+        ),
+        (
+            "vCOFINS",
+            "0.00"
+        ),
+        (
+            "vOutro",
+            "0.00"
+        ),
+        (
+            "vNF",
+            f"{total_produtos:.2f}"
+        ),
+        (
+            "vTotTrib",
+            "0.00"
+        )
+    ]
 
-        "vBC": "0.00",
+    for tag, valor in campos_total:
 
-        "vICMS": "0.00",
-
-        "vICMSDeson": "0.00",
-
-        "vFCP": "0.00",
-
-        "vBCST": "0.00",
-
-        "vST": "0.00",
-
-        "vFCPST": "0.00",
-
-        "vFCPSTRet": "0.00",
-
-        "vProd": f"{total_produtos:.2f}",
-
-        "vFrete": "0.00",
-
-        "vSeg": "0.00",
-
-        "vDesc": "0.00",
-
-        "vII": "0.00",
-
-        "vIPI": "0.00",
-
-        "vIPIDevol": "0.00",
-
-        "vPIS": "0.00",
-
-        "vCOFINS": "0.00",
-
-        "vOutro": "0.00",
-
-        "vNF": f"{total_produtos:.2f}",
-
-        "vTotTrib": "0.00"
-    }
-
-    for tag, valor in campos_total.items():
-
-        etree.SubElement(
+        criar_elemento(
             icmsTot,
-            tag
-        ).text = valor
+            tag,
+            valor
+        )
+
     # ==========================================
     # TRANSPORTE
     # ==========================================
-    transp = etree.SubElement(
+    log("Gerando transporte")
+
+    transp = criar_elemento(
         infNFe,
         "transp"
     )
 
-    etree.SubElement(
+    criar_elemento(
         transp,
-        "modFrete"
-    ).text = "9"
+        "modFrete",
+        "9"
+    )
 
     # ==========================================
     # PAGAMENTO
     # ==========================================
-    pag = etree.SubElement(
+    log("Gerando pagamento")
+
+    pag = criar_elemento(
         infNFe,
         "pag"
     )
 
-    detPag = etree.SubElement(
+    detPag = criar_elemento(
         pag,
         "detPag"
     )
 
     forma_pagamento = (
-        venda.get("pagamento")
-        or venda.get("forma_pagamento")
-        or venda.get("tipo_pagamento")
+        venda.get(
+            "pagamento"
+        )
+        or venda.get(
+            "forma_pagamento"
+        )
+        or venda.get(
+            "tipo_pagamento"
+        )
         or "outros"
     )
 
@@ -833,48 +1219,137 @@ def gerar_xml_nfce(dados, qr_code_url):
         forma_pagamento
     )
 
-    etree.SubElement(
-        detPag,
-        "tPag"
-    ).text = t_pag
+    log(
+        f"Forma pagamento: "
+        f"{forma_pagamento}"
+    )
 
-    etree.SubElement(
+    log(
+        f"tPag: {t_pag}"
+    )
+
+    criar_elemento(
         detPag,
-        "vPag"
-    ).text = f"{total_produtos:.2f}"
+        "tPag",
+        t_pag
+    )
+
+    criar_elemento(
+        detPag,
+        "vPag",
+        f"{total_produtos:.2f}"
+    )
 
     # ==========================================
     # INFORMAÇÕES SUPLEMENTARES
     # ==========================================
     if qr_code_url:
 
-        infNFeSupl = etree.SubElement(
+        log(
+            "Adicionando infNFeSupl"
+        )
+
+        infNFeSupl = criar_elemento(
             nfe,
             "infNFeSupl"
         )
 
-        etree.SubElement(
+        criar_elemento(
             infNFeSupl,
-            "qrCode"
-        ).text = qr_code_url
+            "qrCode",
+            qr_code_url
+        )
 
-        etree.SubElement(
+        criar_elemento(
             infNFeSupl,
-            "urlChave"
-        ).text = (
-            "https://www.sistema.fazenda.sp.gov.br/"
-            "NFCeConsultaPublica/Paginas/"
-            "ConsultaPublica.aspx"
+            "urlChave",
+            (
+                "https://www.sistema.fazenda.sp.gov.br/"
+                "NFCeConsultaPublica/Paginas/"
+                "ConsultaPublica.aspx"
+            )
+        )
+
+    else:
+
+        log(
+            "qr_code_url não informado. "
+            "infNFeSupl não será criado nesta etapa."
         )
 
     # ==========================================
-    # RETORNO XML
+    # XML FINAL
     # ==========================================
-    return etree.tostring(
+    log("Serializando XML")
+
+    xml_bytes = etree.tostring(
         nfe,
         encoding="utf-8",
-        xml_declaration=True
+        xml_declaration=True,
+        pretty_print=False
     )
+
+    # ==========================================
+    # TESTE DE PARSE
+    # ==========================================
+    log(
+        "Validando sintaxe do XML gerado"
+    )
+
+    try:
+
+        xml_teste = etree.fromstring(
+            xml_bytes
+        )
+
+        log(
+            f"XML válido. Raiz: "
+            f"{xml_teste.tag}"
+        )
+
+    except etree.XMLSyntaxError as e:
+
+        print("\n")
+        print("!" * 100)
+        print(
+            "ERRO DE SINTAXE NO XML NFC-e"
+        )
+        print("!" * 100)
+        print(str(e))
+        print("!" * 100)
+
+        raise
+
+    # ==========================================
+    # DEBUG COMPLETO
+    # ==========================================
+    print("\n")
+    print("=" * 100)
+    print(
+        "=============== XML NFC-e GERADO "
+        "ANTES DA ASSINATURA ==============="
+    )
+    print("=" * 100)
+
+    print(
+        xml_bytes.decode(
+            "utf-8"
+        )
+    )
+
+    print("=" * 100)
+    print(
+        "=============== FIM XML NFC-e "
+        "GERADO ==============="
+    )
+    print("=" * 100)
+    print("\n")
+
+    log(
+        "===== XML NFC-e GERADO COM SUCESSO ====="
+    )
+
+    return xml_bytes
 
 
 # ==========================================
@@ -882,15 +1357,27 @@ def gerar_xml_nfce(dados, qr_code_url):
 # ==========================================
 def calcular_dv_mod11(chave):
 
-    pesos = [2, 3, 4, 5, 6, 7, 8, 9]
+    pesos = [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+    ]
 
     soma = 0
     peso_index = 0
 
-    for digito in reversed(chave):
+    for digito in reversed(
+        chave
+    ):
 
         soma += (
-            int(digito) *
+            int(digito)
+            *
             pesos[peso_index]
         )
 
@@ -903,7 +1390,6 @@ def calcular_dv_mod11(chave):
     dv = 11 - resto
 
     if dv >= 10:
-
         dv = 0
 
     return str(dv)
@@ -922,9 +1408,56 @@ def gerar_chave_acesso(
     tpEmis="1"
 ):
 
+    log(
+        "Gerando chave de acesso"
+    )
+
+    cUF = somente_numeros(
+        cUF
+    )
+
+    ano_mes = somente_numeros(
+        ano_mes
+    )
+
     cnpj = somente_numeros(
         cnpj
     )
+
+    modelo = somente_numeros(
+        modelo
+    )
+
+    serie = somente_numeros(
+        serie
+    )
+
+    numero = somente_numeros(
+        numero
+    )
+
+    tpEmis = somente_numeros(
+        tpEmis
+    )
+
+    if len(cUF) != 2:
+
+        raise Exception(
+            f"cUF inválido: {cUF}"
+        )
+
+    if len(ano_mes) != 4:
+
+        raise Exception(
+            f"AAMM inválido: {ano_mes}"
+        )
+
+    if len(cnpj) != 14:
+
+        raise Exception(
+            f"CNPJ inválido para chave: "
+            f"{cnpj}"
+        )
 
     cNF = str(
         random.randint(
@@ -937,17 +1470,49 @@ def gerar_chave_acesso(
         f"{cUF}"
         f"{ano_mes}"
         f"{cnpj}"
-        f"{modelo}"
-        f"{str(serie).zfill(3)}"
-        f"{str(numero).zfill(9)}"
+        f"{modelo.zfill(2)}"
+        f"{serie.zfill(3)}"
+        f"{numero.zfill(9)}"
         f"{tpEmis}"
         f"{cNF}"
     )
+
+    if len(base) != 43:
+
+        raise Exception(
+            f"Base da chave possui "
+            f"{len(base)} dígitos, "
+            f"esperado: 43 | "
+            f"Base: {base}"
+        )
 
     dv = calcular_dv_mod11(
         base
     )
 
-    chave = base + dv
+    chave = (
+        base +
+        dv
+    )
 
-    return chave, cNF, dv
+    if len(chave) != 44:
+
+        raise Exception(
+            f"Chave gerada possui "
+            f"{len(chave)} dígitos"
+        )
+
+    log(
+        f"Chave gerada: {chave}"
+    )
+
+    log(
+        f"cNF: {cNF} | "
+        f"DV: {dv}"
+    )
+
+    return (
+        chave,
+        cNF,
+        dv
+    )
