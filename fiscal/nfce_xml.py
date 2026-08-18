@@ -42,9 +42,193 @@ def limpar_texto_xml(texto):
 # ==========================================
 def mapear_tpag(pagamento):
 
-    # TEMPORÁRIO PARA TESTE SCHEMA
+    if pagamento is None:
+        return "99"
 
-    return "01"
+    pagamento = str(pagamento).strip().lower()
+
+    mapa = {
+        "dinheiro": "01",
+
+        "cheque": "02",
+
+        "credito": "03",
+        "crédito": "03",
+        "cartao_credito": "03",
+        "cartão_credito": "03",
+
+        "debito": "04",
+        "débito": "04",
+        "cartao_debito": "04",
+        "cartão_debito": "04",
+
+        "pix": "17",
+
+        "outros": "99",
+        "outro": "99"
+    }
+
+    return mapa.get(pagamento, "99")
+
+
+# ==========================================
+# ICMS
+# ==========================================
+def gerar_icms(imposto, item, origem, cst_csosn):
+
+    icms = etree.SubElement(
+        imposto,
+        "ICMS"
+    )
+
+    crt = str(
+        item.get("crt", "")
+    ).strip()
+
+    codigo = somente_numeros(
+        cst_csosn
+    )
+
+    # ==========================================
+    # SIMPLES NACIONAL
+    # ==========================================
+    if crt == "1":
+
+        # ==========================================
+        # CSOSN 102, 103, 300 e 400
+        # ==========================================
+        if codigo in [
+            "102",
+            "103",
+            "300",
+            "400"
+        ]:
+
+            grupo = etree.SubElement(
+                icms,
+                "ICMSSN102"
+            )
+
+            etree.SubElement(
+                grupo,
+                "orig"
+            ).text = origem
+
+            etree.SubElement(
+                grupo,
+                "CSOSN"
+            ).text = codigo
+
+            return
+
+        # ==========================================
+        # CSOSN 500
+        # ==========================================
+        if codigo == "500":
+
+            grupo = etree.SubElement(
+                icms,
+                "ICMSSN500"
+            )
+
+            etree.SubElement(
+                grupo,
+                "orig"
+            ).text = origem
+
+            etree.SubElement(
+                grupo,
+                "CSOSN"
+            ).text = codigo
+
+            return
+
+        raise Exception(
+            f"CSOSN {codigo} ainda não implementado "
+            f"para o produto {item.get('id')}"
+        )
+
+    # ==========================================
+    # REGIME NORMAL
+    # ==========================================
+    if crt in ["2", "3"]:
+
+        # ==========================================
+        # CST 00
+        # ==========================================
+        if codigo == "00":
+
+            grupo = etree.SubElement(
+                icms,
+                "ICMS00"
+            )
+
+            etree.SubElement(
+                grupo,
+                "orig"
+            ).text = origem
+
+            etree.SubElement(
+                grupo,
+                "CST"
+            ).text = codigo
+
+            etree.SubElement(
+                grupo,
+                "modBC"
+            ).text = "3"
+
+            etree.SubElement(
+                grupo,
+                "vBC"
+            ).text = "0.00"
+
+            etree.SubElement(
+                grupo,
+                "pICMS"
+            ).text = "0.00"
+
+            etree.SubElement(
+                grupo,
+                "vICMS"
+            ).text = "0.00"
+
+            return
+
+        # ==========================================
+        # CST 40, 41 e 50
+        # ==========================================
+        if codigo in [
+            "40",
+            "41",
+            "50"
+        ]:
+
+            grupo = etree.SubElement(
+                icms,
+                "ICMS40"
+            )
+
+            etree.SubElement(
+                grupo,
+                "orig"
+            ).text = origem
+
+            etree.SubElement(
+                grupo,
+                "CST"
+            ).text = codigo
+
+            return
+
+        raise Exception(
+            f"CST {codigo} ainda não implementado "
+            f"para o produto {item.get('id')}"
+        )
+
+    raise Exception(
+        f"CRT {crt} inválido ou não suportado"
+    )
 
 
 # ==========================================
@@ -339,7 +523,6 @@ def gerar_xml_nfce(dados, qr_code_url):
         fiscal["crt"]
     )
 
-
     # ==========================================
     # DESTINATÁRIO
     # ==========================================
@@ -401,7 +584,7 @@ def gerar_xml_nfce(dados, qr_code_url):
             item["origem"]
         )
 
-        csosn = somente_numeros(
+        cst_csosn = somente_numeros(
             item["cst_csosn"]
         )
 
@@ -505,26 +688,19 @@ def gerar_xml_nfce(dados, qr_code_url):
             "vTotTrib"
         ).text = "0.00"
 
-        icms = etree.SubElement(
+        # ==========================================
+        # ICMS
+        # ==========================================
+        gerar_icms(
             imposto,
-            "ICMS"
+            item,
+            origem,
+            cst_csosn
         )
 
-        icms_sn = etree.SubElement(
-            icms,
-            "ICMSSN102"
-        )
-
-        etree.SubElement(
-            icms_sn,
-            "orig"
-        ).text = origem
-
-        etree.SubElement(
-            icms_sn,
-            "CSOSN"
-        ).text = csosn
-
+        # ==========================================
+        # PIS
+        # ==========================================
         pis = etree.SubElement(
             imposto,
             "PIS"
@@ -540,6 +716,9 @@ def gerar_xml_nfce(dados, qr_code_url):
             "CST"
         ).text = "08"
 
+        # ==========================================
+        # COFINS
+        # ==========================================
         cofins = etree.SubElement(
             imposto,
             "COFINS"
@@ -638,10 +817,21 @@ def gerar_xml_nfce(dados, qr_code_url):
         "detPag"
     )
 
+    forma_pagamento = (
+        venda.get("pagamento")
+        or venda.get("forma_pagamento")
+        or venda.get("tipo_pagamento")
+        or "outros"
+    )
+
+    t_pag = mapear_tpag(
+        forma_pagamento
+    )
+
     etree.SubElement(
         detPag,
         "tPag"
-    ).text = "01"
+    ).text = t_pag
 
     etree.SubElement(
         detPag,
@@ -676,11 +866,8 @@ def gerar_xml_nfce(dados, qr_code_url):
     # RETORNO XML
     # ==========================================
     return etree.tostring(
-
         nfe,
-
         encoding="utf-8",
-
         xml_declaration=True
     )
 
@@ -690,7 +877,7 @@ def gerar_xml_nfce(dados, qr_code_url):
 # ==========================================
 def calcular_dv_mod11(chave):
 
-    pesos = [2,3,4,5,6,7,8,9]
+    pesos = [2, 3, 4, 5, 6, 7, 8, 9]
 
     soma = 0
     peso_index = 0
@@ -742,7 +929,6 @@ def gerar_chave_acesso(
     )
 
     base = (
-
         f"{cUF}"
         f"{ano_mes}"
         f"{cnpj}"
