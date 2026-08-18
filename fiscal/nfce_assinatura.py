@@ -12,8 +12,11 @@ from cryptography.hazmat.backends import default_backend
 from lxml import etree
 
 
-def log(msg):
+NAMESPACE_NFE = "http://www.portalfiscal.inf.br/nfe"
+NAMESPACE_DS = "http://www.w3.org/2000/09/xmldsig#"
 
+
+def log(msg):
     print(
         f"[NFCe-ASSINATURA]"
         f"[{datetime.now().strftime('%H:%M:%S')}] "
@@ -27,8 +30,7 @@ def assinar_xml(
     senha
 ):
     """
-    Assina XML NFC-e corretamente
-    Compatível SEFAZ SP NFC-e 4.00
+    Assina XML NFC-e no padrão XMLDSig utilizado pela NF-e/NFC-e.
     """
 
     log("===== INÍCIO ASSINATURA XML =====")
@@ -36,67 +38,101 @@ def assinar_xml(
     try:
 
         # ==========================================
-        # CERTIFICADO
+        # 1. CERTIFICADO
         # ==========================================
-        log("Lendo certificado A1")
+        log("ETAPA 1: Lendo certificado A1")
 
         if not certificado_path:
-
             raise Exception(
                 "Caminho do certificado não informado"
             )
 
         with open(certificado_path, "rb") as f:
-
             pfx_data = f.read()
 
-        log("Certificado carregado do disco")
+        log(
+            f"Certificado carregado do disco | "
+            f"{len(pfx_data)} bytes"
+        )
 
-        private_key, certificate, _ = (
+        # ==========================================
+        # 2. CARREGA PFX
+        # ==========================================
+        log("ETAPA 2: Abrindo certificado PFX")
+
+        private_key, certificate, additional_certificates = (
             pkcs12.load_key_and_certificates(
-
                 pfx_data,
-
                 senha.encode(),
-
                 backend=default_backend()
             )
         )
 
-        if private_key is None or certificate is None:
-
+        if private_key is None:
             raise Exception(
-                "Certificado A1 inválido "
-                "ou senha incorreta"
+                "Chave privada não encontrada no certificado"
             )
 
-        log(
-            "Certificado e chave privada "
-            "carregados com sucesso"
-        )
+        if certificate is None:
+            raise Exception(
+                "Certificado não encontrado no arquivo PFX"
+            )
+
+        log("Chave privada encontrada")
+        log("Certificado encontrado")
+
+        if additional_certificates:
+            log(
+                f"Certificados adicionais encontrados: "
+                f"{len(additional_certificates)}"
+            )
+        else:
+            log("Nenhum certificado adicional será enviado")
+
+        # ==========================================
+        # 3. CERTIFICADO PEM
+        # ==========================================
+        log("ETAPA 3: Convertendo certificado para PEM")
 
         cert_pem = certificate.public_bytes(
             Encoding.PEM
         )
 
+        log("Certificado convertido para PEM")
+
         # ==========================================
-        # PARSE XML
+        # 4. PARSE XML
         # ==========================================
-        log("Fazendo parse do XML")
+        log("ETAPA 4: Fazendo parse do XML")
+
+        if isinstance(xml_bytes, str):
+            xml_bytes = xml_bytes.encode("utf-8")
+
+        parser = etree.XMLParser(
+            remove_blank_text=True,
+            resolve_entities=False
+        )
 
         xml = etree.fromstring(
-            xml_bytes
+            xml_bytes,
+            parser=parser
+        )
+
+        log(
+            f"Elemento raiz recebido: "
+            f"{xml.tag}"
         )
 
         # ==========================================
-        # COM NAMESPACE
+        # 5. LOCALIZA infNFe
         # ==========================================
+        log("ETAPA 5: Procurando infNFe")
+
         infNFe = xml.find(
-            ".//{http://www.portalfiscal.inf.br/nfe}infNFe"
+            f".//{{{NAMESPACE_NFE}}}infNFe"
         )
 
         if infNFe is None:
-
             raise Exception(
                 "Nó <infNFe> não encontrado no XML"
             )
@@ -104,29 +140,55 @@ def assinar_xml(
         infNFe_id = infNFe.get("Id")
 
         if not infNFe_id:
-
             raise Exception(
-                "Atributo Id do <infNFe> "
-                "não encontrado"
+                "Atributo Id do <infNFe> não encontrado"
+            )
+
+        if not infNFe_id.startswith("NFe"):
+            raise Exception(
+                f"Id do infNFe inválido: {infNFe_id}"
             )
 
         log(
-            f"infNFe encontrado "
-            f"com Id {infNFe_id}"
+            f"infNFe encontrado com Id: "
+            f"{infNFe_id}"
         )
 
         # ==========================================
-        # ASSINATURA XMLDSIG
+        # 6. VERIFICA ASSINATURA EXISTENTE
         # ==========================================
-        log("Iniciando assinatura XMLDSig")
+        log(
+            "ETAPA 6: Verificando se XML "
+            "já possui assinatura"
+        )
+
+        assinatura_existente = xml.find(
+            f".//{{{NAMESPACE_DS}}}Signature"
+        )
+
+        if assinatura_existente is not None:
+            raise Exception(
+                "XML já possui assinatura digital"
+            )
+
+        log("XML ainda não possui assinatura")
+
+        # ==========================================
+        # 7. CONFIGURA ASSINATURA
+        # ==========================================
+        log("ETAPA 7: Configurando XMLDSig")
+
+        log("SignatureMethod: RSA-SHA1")
+        log("DigestMethod: SHA1")
+        log("Canonicalization: C14N 1.0")
+        log("Método: Enveloped")
 
         signer = XMLSigner(
-
             method=methods.enveloped,
 
-            signature_algorithm="rsa-sha256",
+            signature_algorithm="rsa-sha1",
 
-            digest_algorithm="sha256",
+            digest_algorithm="sha1",
 
             c14n_algorithm=(
                 "http://www.w3.org/TR/"
@@ -134,82 +196,230 @@ def assinar_xml(
             )
         )
 
+        # ==========================================
+        # 8. ASSINA infNFe
+        # ==========================================
+        log("ETAPA 8: Assinando infNFe")
+
         signed_infNFe = signer.sign(
-
             infNFe,
-
             key=private_key,
-
             cert=cert_pem,
-
             reference_uri=f"#{infNFe_id}"
         )
 
-        log("Assinatura gerada com sucesso")
+        log("Assinatura criptográfica gerada")
 
         # ==========================================
-        # EXTRAI SIGNATURE
+        # 9. LOCALIZA SIGNATURE
         # ==========================================
+        log("ETAPA 9: Localizando Signature")
+
         signature = signed_infNFe.find(
-            ".//{http://www.w3.org/2000/09/xmldsig#}Signature"
+            f".//{{{NAMESPACE_DS}}}Signature"
         )
 
         if signature is None:
-
             raise Exception(
-                "Signature não encontrada"
+                "Signature não encontrada "
+                "após assinatura"
             )
 
+        log("Signature encontrada")
+
         # ==========================================
-        # REMOVE SIGNATURE DO infNFe
+        # 10. REMOVE SIGNATURE DO infNFe
         # ==========================================
-        signature.getparent().remove(
+        log(
+            "ETAPA 10: Removendo Signature "
+            "de dentro do infNFe"
+        )
+
+        signature_parent = signature.getparent()
+
+        if signature_parent is None:
+            raise Exception(
+                "Não foi possível localizar "
+                "o pai da Signature"
+            )
+
+        signature_parent.remove(
             signature
         )
 
         log(
-            "Signature removida "
-            "de dentro do infNFe"
+            "Signature removida temporariamente "
+            "do infNFe"
         )
 
         # ==========================================
-        # SUBSTITUI infNFe ORIGINAL
+        # 11. SUBSTITUI infNFe
         # ==========================================
+        log(
+            "ETAPA 11: Substituindo infNFe "
+            "original pelo assinado"
+        )
+
         parent = infNFe.getparent()
+
+        if parent is None:
+            raise Exception(
+                "Elemento pai do infNFe "
+                "não encontrado"
+            )
 
         parent.replace(
             infNFe,
             signed_infNFe
         )
 
-        log(
-            "infNFe original substituído "
-            "pelo assinado"
-        )
+        log("infNFe substituído")
 
         # ==========================================
-        # INSERE SIGNATURE FORA DO infNFe
+        # 12. SIGNATURE DEPOIS DO infNFe
         # ==========================================
-        parent.append(
+        log(
+            "ETAPA 12: Inserindo Signature "
+            "como filha de NFe"
+        )
+
+        signed_inf_index = parent.index(
+            signed_infNFe
+        )
+
+        parent.insert(
+            signed_inf_index + 1,
             signature
         )
 
         log(
-            "Signature movida para fora "
-            "do infNFe"
+            "Signature posicionada imediatamente "
+            "depois do infNFe"
         )
 
         # ==========================================
-        # XML FINAL
+        # 13. VALIDA POSIÇÃO
         # ==========================================
+        log(
+            "ETAPA 13: Validando estrutura "
+            "final da NFe"
+        )
+
+        filhos_nfe = []
+
+        for filho in parent:
+            filhos_nfe.append(
+                etree.QName(filho).localname
+            )
+
+        log(
+            f"Filhos de NFe: {filhos_nfe}"
+        )
+
+        if "infNFe" not in filhos_nfe:
+            raise Exception(
+                "infNFe desapareceu da estrutura"
+            )
+
+        if "Signature" not in filhos_nfe:
+            raise Exception(
+                "Signature não está dentro de NFe"
+            )
+
+        # ==========================================
+        # 14. VALIDA ALGORITMOS GERADOS
+        # ==========================================
+        log(
+            "ETAPA 14: Conferindo algoritmos "
+            "da assinatura"
+        )
+
+        signature_method = signature.find(
+            f".//{{{NAMESPACE_DS}}}SignatureMethod"
+        )
+
+        digest_method = signature.find(
+            f".//{{{NAMESPACE_DS}}}DigestMethod"
+        )
+
+        if signature_method is None:
+            raise Exception(
+                "SignatureMethod não encontrado"
+            )
+
+        if digest_method is None:
+            raise Exception(
+                "DigestMethod não encontrado"
+            )
+
+        signature_algorithm = (
+            signature_method.get("Algorithm")
+        )
+
+        digest_algorithm = (
+            digest_method.get("Algorithm")
+        )
+
+        log(
+            f"SignatureMethod final: "
+            f"{signature_algorithm}"
+        )
+
+        log(
+            f"DigestMethod final: "
+            f"{digest_algorithm}"
+        )
+
+        # ==========================================
+        # 15. XML FINAL
+        # ==========================================
+        log("ETAPA 15: Gerando XML final")
+
         xml_final = etree.tostring(
-
             xml,
-
             encoding="utf-8",
-
-            xml_declaration=True
+            xml_declaration=True,
+            pretty_print=False
         )
+
+        # ==========================================
+        # 16. VALIDA SINTAXE
+        # ==========================================
+        log(
+            "ETAPA 16: Validando sintaxe "
+            "do XML final"
+        )
+
+        etree.fromstring(
+            xml_final
+        )
+
+        log("XML final possui sintaxe válida")
+
+        # ==========================================
+        # DEBUG
+        # ==========================================
+        print("\n")
+        print("=" * 100)
+        print(
+            "=============== XML NFC-e "
+            "ASSINADO ==============="
+        )
+        print("=" * 100)
+
+        print(
+            xml_final.decode(
+                "utf-8"
+            )
+        )
+
+        print("=" * 100)
+        print(
+            "=============== FIM XML NFC-e "
+            "ASSINADO ==============="
+        )
+        print("=" * 100)
+        print("\n")
 
         log("===== FIM ASSINATURA XML =====")
 
@@ -217,8 +427,26 @@ def assinar_xml(
 
     except Exception as e:
 
-        log("===== ERRO ASSINATURA XML =====")
+        print("\n")
+        print("!" * 100)
+        print(
+            "=============== ERRO NA "
+            "ASSINATURA NFC-e ==============="
+        )
+        print("!" * 100)
+        print(
+            f"TIPO: {type(e).__name__}"
+        )
+        print(
+            f"MENSAGEM: {str(e)}"
+        )
+        print(
+            f"REPR: {repr(e)}"
+        )
+        print("!" * 100)
+        print("\n")
 
+        log("===== ERRO ASSINATURA XML =====")
         log(str(e))
 
         raise
