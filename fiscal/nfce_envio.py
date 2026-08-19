@@ -642,43 +642,139 @@ def enviar_nfce(
             raise Exception(
                 f"Resposta da SEFAZ não é XML válido: {e}"
             )
-
         ns = {
             "nfe": NFE_NS
         }
 
-        cStat = retorno_xml.findtext(
-            ".//nfe:cStat",
+        # ==========================================
+        # STATUS DO LOTE
+        # ==========================================
+        ret_envi = retorno_xml.find(
+            ".//nfe:retEnviNFe",
             namespaces=ns
         )
 
-        xMotivo = retorno_xml.findtext(
-            ".//nfe:xMotivo",
-            namespaces=ns
-        )
-
-        log(
-            f"cStat recebido: [{cStat}]"
-        )
-
-        log(
-            f"xMotivo recebido: [{xMotivo}]"
-        )
-
-        # ==========================================
-        # SEM CSTAT
-        # ==========================================
-        if cStat is None:
-
+        if ret_envi is None:
             raise Exception(
-                "SEFAZ não retornou cStat. "
+                "SEFAZ não retornou retEnviNFe. "
                 f"Resposta: {response.text[:3000]}"
             )
 
+        cstat_lote = ret_envi.findtext(
+            "nfe:cStat",
+            namespaces=ns
+        )
+
+        motivo_lote = ret_envi.findtext(
+            "nfe:xMotivo",
+            namespaces=ns
+        )
+
+        log(
+            f"cStat DO LOTE: [{cstat_lote}]"
+        )
+
+        log(
+            f"xMotivo DO LOTE: [{motivo_lote}]"
+        )
+
+        if cstat_lote is None:
+            raise Exception(
+                "SEFAZ não retornou cStat do lote"
+            )
+
         # ==========================================
-        # REJEIÇÃO
+        # 104 = LOTE PROCESSADO
         # ==========================================
-        if cStat != "100":
+        if cstat_lote != "104":
+
+            print("\n")
+            print("!" * 100)
+            print(
+                "================ LOTE NFC-e REJEITADO ================"
+            )
+            print("!" * 100)
+
+            print(
+                f"cStat lote: {cstat_lote}"
+            )
+
+            print(
+                f"xMotivo lote: {motivo_lote}"
+            )
+
+            print("!" * 100)
+            print("\n")
+
+            raise Exception(
+                f"Lote NFC-e rejeitado: "
+                f"{cstat_lote} - {motivo_lote}"
+            )
+
+        log(
+            "Lote processado pela SEFAZ com sucesso"
+        )
+
+        # ==========================================
+        # PROTOCOLO DA NFC-e
+        # ==========================================
+        inf_prot = retorno_xml.find(
+            ".//nfe:protNFe/nfe:infProt",
+            namespaces=ns
+        )
+
+        if inf_prot is None:
+            raise Exception(
+                "Lote processado, mas infProt "
+                "não foi encontrado na resposta da SEFAZ"
+            )
+
+        cstat_nfce = inf_prot.findtext(
+            "nfe:cStat",
+            namespaces=ns
+        )
+
+        motivo_nfce = inf_prot.findtext(
+            "nfe:xMotivo",
+            namespaces=ns
+        )
+
+        chave = inf_prot.findtext(
+            "nfe:chNFe",
+            namespaces=ns
+        )
+
+        protocolo = inf_prot.findtext(
+            "nfe:nProt",
+            namespaces=ns
+        )
+
+        log(
+            f"cStat DA NFC-e: [{cstat_nfce}]"
+        )
+
+        log(
+            f"xMotivo DA NFC-e: [{motivo_nfce}]"
+        )
+
+        log(
+            f"CHAVE RETORNADA: [{chave}]"
+        )
+
+        log(
+            f"PROTOCOLO RETORNADO: [{protocolo}]"
+        )
+
+        if cstat_nfce is None:
+            raise Exception(
+                "SEFAZ não retornou o cStat "
+                "individual da NFC-e"
+            )
+
+        # ==========================================
+        # 100 = NFC-e AUTORIZADA
+        # ==========================================
+        if cstat_nfce != "100":
 
             print("\n")
             print("!" * 100)
@@ -688,45 +784,44 @@ def enviar_nfce(
             print("!" * 100)
 
             print(
-                f"cStat: {cStat}"
+                f"cStat: {cstat_nfce}"
             )
 
             print(
-                f"xMotivo: {xMotivo}"
+                f"xMotivo: {motivo_nfce}"
             )
+
+            if chave:
+                print(
+                    f"Chave: {chave}"
+                )
 
             print("!" * 100)
             print("\n")
 
             raise Exception(
                 f"NFC-e rejeitada: "
-                f"{cStat} - {xMotivo}"
+                f"{cstat_nfce} - {motivo_nfce}"
             )
 
         # ==========================================
-        # PROTOCOLO
+        # NFC-e AUTORIZADA
         # ==========================================
-        protocolo = retorno_xml.findtext(
-            ".//nfe:nProt",
-            namespaces=ns
-        )
-
-        chave = retorno_xml.findtext(
-            ".//nfe:chNFe",
-            namespaces=ns
-        )
-
         if not protocolo:
             raise Exception(
-                "NFC-e retornou cStat 100, "
+                "NFC-e autorizada com cStat 100, "
                 "mas protocolo não foi encontrado"
             )
 
         if not chave:
             raise Exception(
-                "NFC-e retornou cStat 100, "
+                "NFC-e autorizada com cStat 100, "
                 "mas chave não foi encontrada"
             )
+
+        log(
+            "NFC-e AUTORIZADA PELA SEFAZ"
+        )
 
         log(
             f"PROTOCOLO: {protocolo}"
@@ -735,7 +830,6 @@ def enviar_nfce(
         log(
             f"CHAVE: {chave}"
         )
-
         # ==========================================
         # QR CODE
         # ==========================================
