@@ -158,6 +158,125 @@ def assinar_xml(
         log("Chave privada encontrada")
 
         log("Certificado encontrado")
+        # ====================================================
+        # DEBUG DO CERTIFICADO
+        # ====================================================
+
+        log("===== DEBUG CERTIFICADO =====")
+
+        subject = certificate.subject.rfc4514_string()
+        issuer = certificate.issuer.rfc4514_string()
+
+        log(f"SUBJECT: {subject}")
+        log(f"ISSUER: {issuer}")
+        log(f"SERIAL: {certificate.serial_number}")
+        log(f"VERSÃO: {certificate.version}")
+
+        log(
+            f"VALIDADE INÍCIO: "
+            f"{certificate.not_valid_before_utc}"
+        )
+
+        log(
+            f"VALIDADE FIM: "
+            f"{certificate.not_valid_after_utc}"
+        )
+
+        try:
+
+            basic_constraints = (
+                certificate.extensions
+                .get_extension_for_class(
+                    __import__(
+                        "cryptography.x509",
+                        fromlist=["BasicConstraints"]
+                    ).BasicConstraints
+                )
+                .value
+            )
+
+            log(
+                f"BASIC CONSTRAINTS CA: "
+                f"{basic_constraints.ca}"
+            )
+
+        except Exception as e:
+
+            log(
+                f"BASIC CONSTRAINTS: "
+                f"não encontrado | {e}"
+            )
+
+        try:
+
+            from cryptography import x509
+
+            key_usage = (
+                certificate.extensions
+                .get_extension_for_class(
+                    x509.KeyUsage
+                )
+                .value
+            )
+
+            log(
+                f"KEY USAGE "
+                f"digital_signature="
+                f"{key_usage.digital_signature}"
+            )
+
+            log(
+                f"KEY USAGE "
+                f"key_encipherment="
+                f"{key_usage.key_encipherment}"
+            )
+
+            log(
+                f"KEY USAGE "
+                f"key_cert_sign="
+                f"{key_usage.key_cert_sign}"
+            )
+
+        except Exception as e:
+
+            log(
+                f"KEY USAGE: "
+                f"não encontrado | {e}"
+            )
+
+        try:
+
+            from cryptography import x509
+
+            extended_key_usage = (
+                certificate.extensions
+                .get_extension_for_class(
+                    x509.ExtendedKeyUsage
+                )
+                .value
+            )
+
+            log(
+                "EXTENDED KEY USAGE: "
+                + ", ".join(
+                    oid.dotted_string
+                    for oid in extended_key_usage
+                )
+            )
+
+        except Exception as e:
+
+            log(
+                f"EXTENDED KEY USAGE: "
+                f"não encontrado | {e}"
+            )
+
+        log(
+            f"CERTIFICADOS ADICIONAIS NO PFX: "
+            f"{len(additional_certificates or [])}"
+        )
+
+        log("===== FIM DEBUG CERTIFICADO =====")
 
         # ====================================================
         # 3. PARSE XML
