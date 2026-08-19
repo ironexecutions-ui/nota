@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from fiscal.nfce_service import router as nfce_router
+from fiscal.fiscal.nfce_service import router as nfce_router
 
 app = FastAPI()
 
