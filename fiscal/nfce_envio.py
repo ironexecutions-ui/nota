@@ -337,6 +337,108 @@ def _validar_assinatura_contexto(raiz, etapa):
 
 
 # ==========================================
+# REASSINAR XML NO CONTEXTO FINAL DO SOAP
+# ==========================================
+def _reassinar_no_contexto_soap(raiz, certificado_path, senha):
+    """
+    Recalcula DigestValue e SignatureValue depois que a NFC-e já está
+    dentro do envelope SOAP. Assim, a assinatura é calculada usando
+    exatamente o mesmo contexto de namespaces que será serializado
+    e enviado à SEFAZ.
+    """
+    from cryptography import x509
+
+    DS_NS = "http://www.w3.org/2000/09/xmldsig#"
+
+    log("Reassinando NFC-e no contexto final do SOAP")
+
+    nfe = raiz.find(f".//{{{NFE_NS}}}NFe")
+    if nfe is None:
+        raise Exception("NFe não encontrada dentro do SOAP para reassinatura")
+
+    inf_nfe = nfe.find(f"{{{NFE_NS}}}infNFe")
+    signature = nfe.find(f"{{{DS_NS}}}Signature")
+
+    if inf_nfe is None or signature is None:
+        raise Exception("Estrutura da assinatura incompleta dentro do SOAP")
+
+    signed_info = signature.find(f"{{{DS_NS}}}SignedInfo")
+    signature_value_el = signature.find(f"{{{DS_NS}}}SignatureValue")
+    digest_value_el = signature.find(
+        f"{{{DS_NS}}}SignedInfo/{{{DS_NS}}}Reference/{{{DS_NS}}}DigestValue"
+    )
+    cert_el = signature.find(
+        f"{{{DS_NS}}}KeyInfo/{{{DS_NS}}}X509Data/{{{DS_NS}}}X509Certificate"
+    )
+
+    if any(x is None for x in (signed_info, signature_value_el, digest_value_el, cert_el)):
+        raise Exception("Campos XMLDSig ausentes durante reassinatura no SOAP")
+
+    with open(certificado_path, "rb") as f:
+        pfx_data = f.read()
+
+    private_key, certificate, _ = load_key_and_certificates(
+        pfx_data,
+        senha.encode(),
+        backend=default_backend()
+    )
+
+    if private_key is None or certificate is None:
+        raise Exception("PFX sem chave privada ou certificado para reassinatura")
+
+    # Garante que o certificado presente no XML continua sendo o do PFX.
+    cert_der_xml = base64.b64decode("".join((cert_el.text or "").split()))
+    cert_der_pfx = certificate.public_bytes(Encoding.DER)
+
+    if cert_der_xml != cert_der_pfx:
+        raise Exception("Certificado do XML difere do PFX antes da reassinatura")
+
+    # 1. Digest da infNFe no contexto final do SOAP.
+    inf_c14n = etree.tostring(
+        inf_nfe,
+        method="c14n",
+        exclusive=False,
+        with_comments=False
+    )
+
+    digest_final = base64.b64encode(
+        hashlib.sha1(inf_c14n).digest()
+    ).decode("ascii")
+
+    digest_value_el.text = digest_final
+    log(f"DigestValue recalculado no SOAP: {digest_final}")
+
+    # 2. Como DigestValue faz parte de SignedInfo, canonicaliza SignedInfo
+    # novamente e gera um novo SignatureValue.
+    signed_info_c14n = etree.tostring(
+        signed_info,
+        method="c14n",
+        exclusive=False,
+        with_comments=False
+    )
+
+    assinatura = private_key.sign(
+        signed_info_c14n,
+        padding.PKCS1v15(),
+        hashes.SHA1()
+    )
+
+    signature_value_el.text = base64.b64encode(assinatura).decode("ascii")
+    log("SignatureValue recalculado no contexto final do SOAP")
+
+    # 3. Verificação matemática imediata com a chave pública do certificado.
+    certificate.public_key().verify(
+        assinatura,
+        signed_info_c14n,
+        padding.PKCS1v15(),
+        hashes.SHA1()
+    )
+
+    log("Reassinatura no contexto SOAP validada matematicamente")
+    return raiz
+
+
+# ==========================================
 # MONTAR LOTE enviNFe
 # ==========================================
 def _montar_envi_nfe(
@@ -635,11 +737,20 @@ def enviar_nfce(
             envi_nfe
         )
 
-        # Validação final exatamente no contexto que será serializado
-        # e enviado pela requisição HTTP.
+        # A canonicalização inclusiva usada pela NFC-e passa a enxergar
+        # os namespaces ancestrais do SOAP. Por isso recalculamos o Digest
+        # e o SignatureValue somente depois de montar o envelope final.
+        _reassinar_no_contexto_soap(
+            soap_element,
+            certificado_path,
+            certificado_senha
+        )
+
+        # Agora a assinatura precisa obrigatoriamente permanecer íntegra
+        # no contexto exato que será serializado e enviado.
         _validar_assinatura_contexto(
             soap_element,
-            "DENTRO_DO_SOAP"
+            "DENTRO_DO_SOAP_APOS_REASSINATURA"
         )
 
         soap_bytes = etree.tostring(
