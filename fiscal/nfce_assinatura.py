@@ -379,8 +379,9 @@ def assinar_xml(
         )
 
         parser = etree.XMLParser(
-            remove_blank_text=True,
-            resolve_entities=False
+            remove_blank_text=False,
+            resolve_entities=False,
+            no_network=True
         )
 
         xml = etree.fromstring(
@@ -444,6 +445,43 @@ def assinar_xml(
         )
 
         # ====================================================
+        # 7.1 VALIDAR CNPJ DO EMITENTE X CERTIFICADO
+        # ====================================================
+
+        emit_cnpj = xml.findtext(
+            f"./{{{NAMESPACE_NFE}}}infNFe/"
+            f"{{{NAMESPACE_NFE}}}emit/"
+            f"{{{NAMESPACE_NFE}}}CNPJ"
+        )
+
+        subject_cert = certificate.subject.rfc4514_string()
+        cnpj_cert_esperado = "".join(
+            caractere
+            for caractere in (emit_cnpj or "")
+            if caractere.isdigit()
+        )
+
+        if not cnpj_cert_esperado:
+            raise Exception(
+                "CNPJ do emitente não encontrado no XML"
+            )
+
+        log(
+            f"CNPJ emitente XML: {cnpj_cert_esperado}"
+        )
+
+        if cnpj_cert_esperado not in subject_cert.replace(".", "").replace("/", "").replace("-", ""):
+            raise Exception(
+                "O certificado carregado não aparenta pertencer "
+                f"ao CNPJ emitente {cnpj_cert_esperado}. "
+                f"Subject: {subject_cert}"
+            )
+
+        log(
+            "CNPJ do emitente localizado no Subject do certificado"
+        )
+
+        # ====================================================
         # 8. VERIFICAR ASSINATURA EXISTENTE
         # ====================================================
 
@@ -499,13 +537,8 @@ def assinar_xml(
         )
 
         signature = etree.Element(
-            etree.QName(
-                NAMESPACE_DS,
-                "Signature"
-            ),
-            nsmap={
-                "ds": NAMESPACE_DS
-            }
+            etree.QName(NAMESPACE_DS, "Signature"),
+            nsmap={"ds": NAMESPACE_DS}
         )
 
         # ====================================================
@@ -846,8 +879,9 @@ def assinar_xml(
         )
 
         parser_final = etree.XMLParser(
-            remove_blank_text=True,
-            resolve_entities=False
+            remove_blank_text=False,
+            resolve_entities=False,
+            no_network=True
         )
 
         xml_check = etree.fromstring(
@@ -960,6 +994,15 @@ def assinar_xml(
             signed_info_check,
             signature_value_check.text.strip(),
             certificate
+        )
+
+        signed_info_final_c14n = canonicalizar(
+            signed_info_check
+        )
+
+        log(
+            "SignedInfo final canonicalizado: "
+            f"{len(signed_info_final_c14n)} bytes"
         )
 
         # ====================================================
