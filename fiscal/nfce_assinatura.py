@@ -538,7 +538,7 @@ def assinar_xml(
 
         signature = etree.Element(
             etree.QName(NAMESPACE_DS, "Signature"),
-            nsmap={"ds": NAMESPACE_DS}
+            nsmap={None: NAMESPACE_DS}
         )
 
         # ====================================================
