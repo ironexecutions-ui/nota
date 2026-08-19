@@ -174,12 +174,12 @@ def assinar_xml(
 
         log(
             f"VALIDADE INÍCIO: "
-            f"{certificate.not_valid_before_utc}"
+            f"{certificate.not_valid_before}"
         )
 
         log(
             f"VALIDADE FIM: "
-            f"{certificate.not_valid_after_utc}"
+            f"{certificate.not_valid_after}"
         )
 
         try:
