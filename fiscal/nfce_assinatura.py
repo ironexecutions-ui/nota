@@ -208,7 +208,6 @@ def assinar_xml(
                 f"BASIC CONSTRAINTS: "
                 f"não encontrado | {e}"
             )
-
         try:
 
             from cryptography import x509
@@ -221,23 +220,44 @@ def assinar_xml(
                 .value
             )
 
+            log("===== KEY USAGE COMPLETO =====")
+
             log(
-                f"KEY USAGE "
-                f"digital_signature="
+                f"KEY USAGE digital_signature="
                 f"{key_usage.digital_signature}"
             )
 
             log(
-                f"KEY USAGE "
-                f"key_encipherment="
+                f"KEY USAGE content_commitment="
+                f"{key_usage.content_commitment}"
+            )
+
+            log(
+                f"KEY USAGE key_encipherment="
                 f"{key_usage.key_encipherment}"
             )
 
             log(
-                f"KEY USAGE "
-                f"key_cert_sign="
+                f"KEY USAGE data_encipherment="
+                f"{key_usage.data_encipherment}"
+            )
+
+            log(
+                f"KEY USAGE key_agreement="
+                f"{key_usage.key_agreement}"
+            )
+
+            log(
+                f"KEY USAGE key_cert_sign="
                 f"{key_usage.key_cert_sign}"
             )
+
+            log(
+                f"KEY USAGE crl_sign="
+                f"{key_usage.crl_sign}"
+            )
+
+            log("===== FIM KEY USAGE COMPLETO =====")
 
         except Exception as e:
 
@@ -245,7 +265,6 @@ def assinar_xml(
                 f"KEY USAGE: "
                 f"não encontrado | {e}"
             )
-
         try:
 
             from cryptography import x509
