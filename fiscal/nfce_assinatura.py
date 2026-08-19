@@ -1,26 +1,24 @@
 from datetime import datetime
-from cryptography import x509
-from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.x509.oid import ExtensionOID
 import base64
-import hashlib
 
 from lxml import etree
 
 from cryptography.hazmat.primitives.serialization import (
     pkcs12,
-    Encoding
+    Encoding,
+    PrivateFormat,
+    NoEncryption,
 )
 
-from cryptography.hazmat.primitives import hashes
-
-from cryptography.hazmat.primitives.asymmetric import padding
-
-from cryptography.hazmat.backends import default_backend
+from signxml import (
+    XMLSigner,
+    XMLVerifier,
+    methods,
+)
 
 
 # ============================================================
-# NAMESPACES
+# CONSTANTES
 # ============================================================
 
 NAMESPACE_NFE = "http://www.portalfiscal.inf.br/nfe"
@@ -28,24 +26,12 @@ NAMESPACE_NFE = "http://www.portalfiscal.inf.br/nfe"
 NAMESPACE_DS = "http://www.w3.org/2000/09/xmldsig#"
 
 C14N_ALGORITHM = (
-    "http://www.w3.org/TR/"
-    "2001/REC-xml-c14n-20010315"
+    "http://www.w3.org/TR/2001/REC-xml-c14n-20010315"
 )
 
-SIGNATURE_ALGORITHM = (
-    "http://www.w3.org/2000/09/"
-    "xmldsig#rsa-sha1"
-)
+SIGNATURE_ALGORITHM = "rsa-sha1"
 
-DIGEST_ALGORITHM = (
-    "http://www.w3.org/2000/09/"
-    "xmldsig#sha1"
-)
-
-ENVELOPED_ALGORITHM = (
-    "http://www.w3.org/2000/09/"
-    "xmldsig#enveloped-signature"
-)
+DIGEST_ALGORITHM = "sha1"
 
 
 # ============================================================
@@ -53,7 +39,6 @@ ENVELOPED_ALGORITHM = (
 # ============================================================
 
 def log(msg):
-
     print(
         f"[NFCe-ASSINATURA]"
         f"[{datetime.now().strftime('%H:%M:%S')}] "
@@ -62,21 +47,7 @@ def log(msg):
 
 
 # ============================================================
-# CANONICALIZA
-# ============================================================
-
-def canonicalizar(elemento):
-
-    return etree.tostring(
-        elemento,
-        method="c14n",
-        exclusive=False,
-        with_comments=False
-    )
-
-
-# ============================================================
-# ASSINA XML NFC-e
+# ASSINAR XML NFC-e
 # ============================================================
 
 def assinar_xml(
@@ -84,21 +55,39 @@ def assinar_xml(
     certificado_path,
     senha
 ):
-
     """
-    Assinatura XMLDSig da NFC-e.
+    Assina o XML da NFC-e usando XMLDSig.
 
-    Estrutura:
+    Estrutura esperada:
 
-    NFe
-        infNFe
-        Signature
+    <NFe>
+        <infNFe Id="NFe...">
+            ...
+        </infNFe>
+    </NFe>
 
-    Algoritmos:
+    Estrutura final:
 
-    Canonicalização: C14N 1.0
-    Digest: SHA1
-    Assinatura: RSA-SHA1
+    <NFe>
+        <infNFe Id="NFe...">
+            ...
+        </infNFe>
+
+        <Signature>
+            ...
+        </Signature>
+    </NFe>
+
+    Algoritmos utilizados pela NFC-e:
+
+    Canonicalização:
+        C14N 1.0
+
+    Digest:
+        SHA1
+
+    Assinatura:
+        RSA-SHA1
     """
 
     log("===== INÍCIO ASSINATURA XML =====")
@@ -106,276 +95,132 @@ def assinar_xml(
     try:
 
         # ====================================================
-        # 1. CERTIFICADO
+        # 1. NORMALIZAR XML
         # ====================================================
 
-        log("ETAPA 1: Lendo certificado A1")
+        log("ETAPA 1: Preparando XML")
+
+        if isinstance(xml_bytes, str):
+            xml_bytes = xml_bytes.encode("utf-8")
+
+        if not xml_bytes:
+            raise Exception(
+                "XML da NFC-e está vazio"
+            )
+
+        # ====================================================
+        # 2. CARREGAR CERTIFICADO PFX
+        # ====================================================
+
+        log("ETAPA 2: Lendo certificado PFX")
 
         if not certificado_path:
-
             raise Exception(
                 "Caminho do certificado não informado"
             )
 
-        with open(certificado_path, "rb") as f:
-
-            pfx_data = f.read()
+        with open(certificado_path, "rb") as arquivo:
+            pfx_data = arquivo.read()
 
         log(
-            f"Certificado carregado | "
+            f"Certificado PFX carregado: "
             f"{len(pfx_data)} bytes"
         )
 
         # ====================================================
-        # 2. ABRE PFX
+        # 3. ABRIR PFX
         # ====================================================
 
-        log("ETAPA 2: Abrindo PFX")
+        log("ETAPA 3: Abrindo PFX")
 
         (
             private_key,
             certificate,
             additional_certificates
         ) = pkcs12.load_key_and_certificates(
-
             pfx_data,
-
-            senha.encode(),
-
-            backend=default_backend()
+            senha.encode("utf-8")
         )
 
         if private_key is None:
-
             raise Exception(
-                "Chave privada não encontrada"
+                "Chave privada não encontrada no PFX"
             )
 
         if certificate is None:
-
             raise Exception(
-                "Certificado não encontrado"
+                "Certificado não encontrado no PFX"
             )
 
         log("Chave privada encontrada")
-
         log("Certificado encontrado")
+
         # ====================================================
-        # DEBUG DO CERTIFICADO
+        # 4. INFORMAÇÕES DO CERTIFICADO
         # ====================================================
 
-        log("===== DEBUG CERTIFICADO =====")
+        log("===== CERTIFICADO =====")
 
-        subject = certificate.subject.rfc4514_string()
-        issuer = certificate.issuer.rfc4514_string()
+        log(
+            f"SUBJECT: "
+            f"{certificate.subject.rfc4514_string()}"
+        )
 
-        log(f"SUBJECT: {subject}")
-        log(f"ISSUER: {issuer}")
-        log(f"SERIAL: {certificate.serial_number}")
-        log(f"VERSÃO: {certificate.version}")
+        log(
+            f"ISSUER: "
+            f"{certificate.issuer.rfc4514_string()}"
+        )
+
+        log(
+            f"SERIAL: "
+            f"{certificate.serial_number}"
+        )
 
         log(
             f"VALIDADE INÍCIO: "
-            f"{certificate.not_valid_before}"
+            f"{certificate.not_valid_before_utc}"
         )
 
         log(
             f"VALIDADE FIM: "
-            f"{certificate.not_valid_after}"
+            f"{certificate.not_valid_after_utc}"
         )
-
-        try:
-
-            basic_constraints = (
-                certificate.extensions
-                .get_extension_for_class(
-                    __import__(
-                        "cryptography.x509",
-                        fromlist=["BasicConstraints"]
-                    ).BasicConstraints
-                )
-                .value
-            )
-
-            log(
-                f"BASIC CONSTRAINTS CA: "
-                f"{basic_constraints.ca}"
-            )
-
-        except Exception as e:
-
-            log(
-                f"BASIC CONSTRAINTS: "
-                f"não encontrado | {e}"
-            )
-        try:
-
-            from cryptography import x509
-
-            key_usage = (
-                certificate.extensions
-                .get_extension_for_class(
-                    x509.KeyUsage
-                )
-                .value
-            )
-
-            log("===== KEY USAGE COMPLETO =====")
-
-            log(
-                f"KEY USAGE digital_signature="
-                f"{key_usage.digital_signature}"
-            )
-
-            log(
-                f"KEY USAGE content_commitment="
-                f"{key_usage.content_commitment}"
-            )
-
-            log(
-                f"KEY USAGE key_encipherment="
-                f"{key_usage.key_encipherment}"
-            )
-
-            log(
-                f"KEY USAGE data_encipherment="
-                f"{key_usage.data_encipherment}"
-            )
-
-            log(
-                f"KEY USAGE key_agreement="
-                f"{key_usage.key_agreement}"
-            )
-
-            log(
-                f"KEY USAGE key_cert_sign="
-                f"{key_usage.key_cert_sign}"
-            )
-
-            log(
-                f"KEY USAGE crl_sign="
-                f"{key_usage.crl_sign}"
-            )
-
-            log("===== FIM KEY USAGE COMPLETO =====")
-
-        except Exception as e:
-
-            log(
-                f"KEY USAGE: "
-                f"não encontrado | {e}"
-            )
-        try:
-
-            from cryptography import x509
-
-            extended_key_usage = (
-                certificate.extensions
-                .get_extension_for_class(
-                    x509.ExtendedKeyUsage
-                )
-                .value
-            )
-
-            log(
-                "EXTENDED KEY USAGE: "
-                + ", ".join(
-                    oid.dotted_string
-                    for oid in extended_key_usage
-                )
-            )
-
-        except Exception as e:
-
-            log(
-                f"EXTENDED KEY USAGE: "
-                f"não encontrado | {e}"
-            )
 
         log(
-            f"CERTIFICADOS ADICIONAIS NO PFX: "
+            f"CERTIFICADOS ADICIONAIS: "
             f"{len(additional_certificates or [])}"
         )
+
         # ====================================================
-        # DIAGNÓSTICO PROFUNDO DO CERTIFICADO
+        # 5. CONVERTER CHAVE PARA PEM
         # ====================================================
 
-        log("===== DIAGNÓSTICO PROFUNDO CERTIFICADO =====")
+        log("ETAPA 4: Convertendo chave privada para PEM")
 
-        cert_der_debug = certificate.public_bytes(
+        private_key_pem = private_key.private_bytes(
+            encoding=Encoding.PEM,
+            format=PrivateFormat.PKCS8,
+            encryption_algorithm=NoEncryption()
+        )
+
+        certificate_pem = certificate.public_bytes(
+            Encoding.PEM
+        )
+
+        certificate_der = certificate.public_bytes(
             Encoding.DER
         )
 
-        sha1_fingerprint = certificate.fingerprint(
-            hashes.SHA1()
-        ).hex().upper()
-
-        sha256_fingerprint = certificate.fingerprint(
-            hashes.SHA256()
-        ).hex().upper()
-
         log(
-            f"FINGERPRINT SHA1: "
-            f"{sha1_fingerprint}"
+            f"Certificado DER: "
+            f"{len(certificate_der)} bytes"
         )
-
-        log(
-            f"FINGERPRINT SHA256: "
-            f"{sha256_fingerprint}"
-        )
-
-        log(
-            f"TAMANHO CERTIFICADO DER: "
-            f"{len(cert_der_debug)} bytes"
-        )
-
-        public_key = certificate.public_key()
-
-        log(
-            f"TIPO CHAVE PÚBLICA: "
-            f"{type(public_key).__name__}"
-        )
-
-        if isinstance(public_key, rsa.RSAPublicKey):
-
-            log(
-                f"TAMANHO CHAVE RSA: "
-                f"{public_key.key_size} bits"
-            )
-
-        log(
-            f"ALGORITMO ASSINATURA CERTIFICADO: "
-            f"{certificate.signature_algorithm_oid.dotted_string}"
-        )
-
-        try:
-
-            log(
-                f"HASH ASSINATURA CERTIFICADO: "
-                f"{certificate.signature_hash_algorithm.name}"
-            )
-
-        except Exception as e:
-
-            log(
-                f"HASH ASSINATURA CERTIFICADO: "
-                f"não identificado | {e}"
-            )
-
-        log("===== FIM DIAGNÓSTICO PROFUNDO =====")
-        log("===== FIM DEBUG CERTIFICADO =====")
 
         # ====================================================
-        # 3. PARSE XML
+        # 6. PARSE DO XML
         # ====================================================
 
-        log("ETAPA 3: Fazendo parse do XML")
-
-        if isinstance(xml_bytes, str):
-
-            xml_bytes = xml_bytes.encode(
-                "utf-8"
-            )
+        log("ETAPA 5: Interpretando XML")
 
         parser = etree.XMLParser(
             remove_blank_text=True,
@@ -387,22 +232,28 @@ def assinar_xml(
             parser=parser
         )
 
+        raiz = etree.QName(xml).localname
+
         log(
-            f"Raiz XML: {xml.tag}"
+            f"Elemento raiz: {raiz}"
         )
 
+        if raiz != "NFe":
+            raise Exception(
+                f"Elemento raiz inválido: {raiz}"
+            )
+
         # ====================================================
-        # 4. LOCALIZA infNFe
+        # 7. LOCALIZAR infNFe
         # ====================================================
 
-        log("ETAPA 4: Localizando infNFe")
+        log("ETAPA 6: Localizando infNFe")
 
         infNFe = xml.find(
-            f".//{{{NAMESPACE_NFE}}}infNFe"
+            f"./{{{NAMESPACE_NFE}}}infNFe"
         )
 
         if infNFe is None:
-
             raise Exception(
                 "infNFe não encontrado"
             )
@@ -410,13 +261,11 @@ def assinar_xml(
         infNFe_id = infNFe.get("Id")
 
         if not infNFe_id:
-
             raise Exception(
                 "Id do infNFe não encontrado"
             )
 
         if not infNFe_id.startswith("NFe"):
-
             raise Exception(
                 f"Id do infNFe inválido: "
                 f"{infNFe_id}"
@@ -427,640 +276,304 @@ def assinar_xml(
         )
 
         # ====================================================
-        # 5. VERIFICA ASSINATURA EXISTENTE
+        # 8. GARANTIR QUE NÃO EXISTE ASSINATURA
         # ====================================================
 
-        assinatura_existente = xml.find(
-            f".//{{{NAMESPACE_DS}}}Signature"
+        log(
+            "ETAPA 7: Verificando assinatura existente"
         )
 
-        if assinatura_existente is not None:
+        signature_existente = xml.find(
+            f"./{{{NAMESPACE_DS}}}Signature"
+        )
 
+        if signature_existente is not None:
             raise Exception(
                 "XML já possui Signature"
             )
 
         # ====================================================
-        # 6. CRIA SIGNATURE
+        # 9. CRIAR ASSINADOR
         # ====================================================
 
         log(
-            "ETAPA 6: Criando Signature"
+            "ETAPA 8: Criando XMLSigner"
         )
 
-        signature = etree.Element(
-
-            etree.QName(
-                NAMESPACE_DS,
-                "Signature"
-            ),
-
-            nsmap={
-                "ds": NAMESPACE_DS
-            }
+        signer = XMLSigner(
+            method=methods.enveloped,
+            signature_algorithm=SIGNATURE_ALGORITHM,
+            digest_algorithm=DIGEST_ALGORITHM,
+            c14n_algorithm=C14N_ALGORITHM
         )
 
         # ====================================================
-        # SignedInfo
-        # ====================================================
-
-        signed_info = etree.SubElement(
-
-            signature,
-
-            etree.QName(
-                NAMESPACE_DS,
-                "SignedInfo"
-            )
-        )
-
-        # ====================================================
-        # CanonicalizationMethod
-        # ====================================================
-
-        canonicalization_method = etree.SubElement(
-
-            signed_info,
-
-            etree.QName(
-                NAMESPACE_DS,
-                "CanonicalizationMethod"
-            )
-        )
-
-        canonicalization_method.set(
-            "Algorithm",
-            C14N_ALGORITHM
-        )
-
-        # ====================================================
-        # SignatureMethod
-        # ====================================================
-
-        signature_method = etree.SubElement(
-
-            signed_info,
-
-            etree.QName(
-                NAMESPACE_DS,
-                "SignatureMethod"
-            )
-        )
-
-        signature_method.set(
-            "Algorithm",
-            SIGNATURE_ALGORITHM
-        )
-
-        # ====================================================
-        # Reference
-        # ====================================================
-
-        reference = etree.SubElement(
-
-            signed_info,
-
-            etree.QName(
-                NAMESPACE_DS,
-                "Reference"
-            )
-        )
-
-        reference.set(
-            "URI",
-            f"#{infNFe_id}"
-        )
-
-        # ====================================================
-        # Transforms
-        # ====================================================
-
-        transforms = etree.SubElement(
-
-            reference,
-
-            etree.QName(
-                NAMESPACE_DS,
-                "Transforms"
-            )
-        )
-
-        transform_enveloped = etree.SubElement(
-
-            transforms,
-
-            etree.QName(
-                NAMESPACE_DS,
-                "Transform"
-            )
-        )
-
-        transform_enveloped.set(
-            "Algorithm",
-            ENVELOPED_ALGORITHM
-        )
-
-        transform_c14n = etree.SubElement(
-
-            transforms,
-
-            etree.QName(
-                NAMESPACE_DS,
-                "Transform"
-            )
-        )
-
-        transform_c14n.set(
-            "Algorithm",
-            C14N_ALGORITHM
-        )
-
-        # ====================================================
-        # DigestMethod
-        # ====================================================
-
-        digest_method = etree.SubElement(
-
-            reference,
-
-            etree.QName(
-                NAMESPACE_DS,
-                "DigestMethod"
-            )
-        )
-
-        digest_method.set(
-            "Algorithm",
-            DIGEST_ALGORITHM
-        )
-
-        # ====================================================
-        # DigestValue vazio por enquanto
-        # ====================================================
-
-        digest_value_element = etree.SubElement(
-
-            reference,
-
-            etree.QName(
-                NAMESPACE_DS,
-                "DigestValue"
-            )
-        )
-
-        # ====================================================
-        # SignatureValue vazio por enquanto
-        # ====================================================
-
-        signature_value_element = etree.SubElement(
-
-            signature,
-
-            etree.QName(
-                NAMESPACE_DS,
-                "SignatureValue"
-            )
-        )
-
-        # ====================================================
-        # KeyInfo
-        # ====================================================
-
-        key_info = etree.SubElement(
-
-            signature,
-
-            etree.QName(
-                NAMESPACE_DS,
-                "KeyInfo"
-            )
-        )
-
-        x509_data = etree.SubElement(
-
-            key_info,
-
-            etree.QName(
-                NAMESPACE_DS,
-                "X509Data"
-            )
-        )
-
-        x509_certificate = etree.SubElement(
-
-            x509_data,
-
-            etree.QName(
-                NAMESPACE_DS,
-                "X509Certificate"
-            )
-        )
-
-        cert_der = certificate.public_bytes(
-            Encoding.DER
-        )
-
-        cert_base64 = base64.b64encode(
-            cert_der
-        ).decode("ascii")
-
-        x509_certificate.text = cert_base64
-        # ====================================================
-        # DIAGNÓSTICO X509Certificate DO XML
+        # 10. ASSINAR
         # ====================================================
 
         log(
-            "===== DIAGNÓSTICO X509Certificate XML ====="
+            "ETAPA 9: Assinando infNFe"
         )
 
-        certificado_xml_base64 = (
+        xml_assinado = signer.sign(
+            xml,
+            key=private_key_pem,
+            cert=certificate_pem,
+            reference_uri=f"#{infNFe_id}",
+            id_attribute="Id",
+            always_add_key_value=False
+        )
+
+        log(
+            "XMLSigner concluiu a assinatura"
+        )
+
+        # ====================================================
+        # 11. LOCALIZAR SIGNATURE
+        # ====================================================
+
+        log(
+            "ETAPA 10: Conferindo Signature"
+        )
+
+        signature = xml_assinado.find(
+            f"./{{{NAMESPACE_DS}}}Signature"
+        )
+
+        if signature is None:
+            raise Exception(
+                "Signature não foi gerada"
+            )
+
+        signed_info = signature.find(
+            f"./{{{NAMESPACE_DS}}}SignedInfo"
+        )
+
+        signature_value = signature.find(
+            f"./{{{NAMESPACE_DS}}}SignatureValue"
+        )
+
+        key_info = signature.find(
+            f"./{{{NAMESPACE_DS}}}KeyInfo"
+        )
+
+        if signed_info is None:
+            raise Exception(
+                "SignedInfo não encontrado"
+            )
+
+        if signature_value is None:
+            raise Exception(
+                "SignatureValue não encontrado"
+            )
+
+        if key_info is None:
+            raise Exception(
+                "KeyInfo não encontrado"
+            )
+
+        # ====================================================
+        # 12. CONFERIR REFERENCE
+        # ====================================================
+
+        reference = signed_info.find(
+            f"./{{{NAMESPACE_DS}}}Reference"
+        )
+
+        if reference is None:
+            raise Exception(
+                "Reference não encontrado"
+            )
+
+        reference_uri = reference.get("URI")
+
+        log(
+            f"Reference URI: {reference_uri}"
+        )
+
+        esperado = f"#{infNFe_id}"
+
+        if reference_uri != esperado:
+            raise Exception(
+                "Reference URI incorreto. "
+                f"Esperado: {esperado} | "
+                f"Recebido: {reference_uri}"
+            )
+
+        # ====================================================
+        # 13. CONFERIR DIGEST
+        # ====================================================
+
+        digest_value = reference.find(
+            f"./{{{NAMESPACE_DS}}}DigestValue"
+        )
+
+        if digest_value is None:
+            raise Exception(
+                "DigestValue não encontrado"
+            )
+
+        if not digest_value.text:
+            raise Exception(
+                "DigestValue vazio"
+            )
+
+        log(
+            f"DigestValue: {digest_value.text}"
+        )
+
+        # ====================================================
+        # 14. CONFERIR CERTIFICADO NO XML
+        # ====================================================
+
+        log(
+            "ETAPA 11: Conferindo X509Certificate"
+        )
+
+        x509_certificate = signature.find(
+            f".//{{{NAMESPACE_DS}}}X509Certificate"
+        )
+
+        if x509_certificate is None:
+            raise Exception(
+                "X509Certificate não encontrado"
+            )
+
+        cert_xml_base64 = (
             x509_certificate.text or ""
         ).strip()
 
-        log(
-            f"TAMANHO BASE64 NO XML: "
-            f"{len(certificado_xml_base64)} caracteres"
-        )
-
-        try:
-
-            certificado_xml_der = base64.b64decode(
-                certificado_xml_base64,
-                validate=True
-            )
-
-            log(
-                f"TAMANHO DER EXTRAÍDO DO XML: "
-                f"{len(certificado_xml_der)} bytes"
-            )
-
-            certificado_do_xml = (
-                x509.load_der_x509_certificate(
-                    certificado_xml_der
-                )
-            )
-
-            xml_sha1 = certificado_do_xml.fingerprint(
-                hashes.SHA1()
-            ).hex().upper()
-
-            xml_sha256 = certificado_do_xml.fingerprint(
-                hashes.SHA256()
-            ).hex().upper()
-
-            log(
-                f"XML CERT SHA1: "
-                f"{xml_sha1}"
-            )
-
-            log(
-                f"XML CERT SHA256: "
-                f"{xml_sha256}"
-            )
-
-            log(
-                f"XML CERT SUBJECT: "
-                f"{certificado_do_xml.subject.rfc4514_string()}"
-            )
-
-            log(
-                f"XML CERT ISSUER: "
-                f"{certificado_do_xml.issuer.rfc4514_string()}"
-            )
-
-            log(
-                f"XML CERT SERIAL: "
-                f"{certificado_do_xml.serial_number}"
-            )
-
-            if cert_der_debug == certificado_xml_der:
-
-                log(
-                    "RESULTADO CERTIFICADO: "
-                    "PFX E X509Certificate SÃO "
-                    "100% IDÊNTICOS"
-                )
-
-            else:
-
-                log(
-                    "ERRO CRÍTICO: CERTIFICADO DO "
-                    "PFX É DIFERENTE DO CERTIFICADO "
-                    "COLOCADO NO XML"
-                )
-
-            if (
-                sha256_fingerprint
-                == xml_sha256
-            ):
-
-                log(
-                    "FINGERPRINT SHA256 CONFERE"
-                )
-
-            else:
-
-                log(
-                    "ERRO: FINGERPRINT SHA256 "
-                    "NÃO CONFERE"
-                )
-
-        except Exception as e:
-
-            log(
-                "ERRO AO REABRIR CERTIFICADO "
-                f"DO X509Certificate: {e}"
-            )
-
-            raise
-
-        log(
-            "===== FIM DIAGNÓSTICO X509Certificate ====="
-        )
-        # ====================================================
-        # 7. INSERE SIGNATURE NA ÁRVORE PRIMEIRO
-        # ====================================================
-
-        log(
-            "ETAPA 7: Inserindo Signature "
-            "na estrutura final"
-        )
-
-        parent = infNFe.getparent()
-
-        if parent is None:
-
+        if not cert_xml_base64:
             raise Exception(
-                "Elemento NFe não encontrado"
+                "X509Certificate vazio"
             )
 
-        indice_infNFe = parent.index(
-            infNFe
+        cert_xml_der = base64.b64decode(
+            cert_xml_base64
         )
 
-        parent.insert(
-            indice_infNFe + 1,
-            signature
-        )
-
-        log(
-            "Signature inserida depois do infNFe"
-        )
-
-        # ====================================================
-        # 8. CALCULA DIGEST DO infNFe
-        # ====================================================
-
-        log(
-            "ETAPA 8: Canonicalizando infNFe"
-        )
-
-        infNFe_c14n = canonicalizar(
-            infNFe
-        )
-
-        log(
-            f"infNFe C14N: "
-            f"{len(infNFe_c14n)} bytes"
-        )
-
-        digest = hashlib.sha1(
-            infNFe_c14n
-        ).digest()
-
-        digest_value = base64.b64encode(
-            digest
-        ).decode("ascii")
-
-        digest_value_element.text = (
-            digest_value
-        )
-
-        log(
-            f"DigestValue: {digest_value}"
-        )
-
-        # ====================================================
-        # 9. CANONICALIZA SignedInfo JÁ NA ÁRVORE
-        # ====================================================
-
-        log(
-            "ETAPA 9: Canonicalizando SignedInfo "
-            "no contexto final"
-        )
-
-        signed_info_c14n = canonicalizar(
-            signed_info
-        )
-
-        log(
-            f"SignedInfo C14N: "
-            f"{len(signed_info_c14n)} bytes"
-        )
-
-        # ====================================================
-        # 10. RSA-SHA1
-        # ====================================================
-
-        log(
-            "ETAPA 10: Assinando SignedInfo "
-            "com RSA-SHA1"
-        )
-
-        assinatura_binaria = private_key.sign(
-
-            signed_info_c14n,
-
-            padding.PKCS1v15(),
-
-            hashes.SHA1()
-        )
-
-        signature_value = base64.b64encode(
-            assinatura_binaria
-        ).decode("ascii")
-
-        signature_value_element.text = (
-            signature_value
-        )
-
-        log(
-            "SignatureValue calculado"
-        )
-
-        # ====================================================
-        # 11. VERIFICAÇÃO LOCAL DA ASSINATURA
-        # ====================================================
-
-        log(
-            "ETAPA 11: Verificando assinatura "
-            "localmente"
-        )
-
-        certificate.public_key().verify(
-
-            assinatura_binaria,
-
-            signed_info_c14n,
-
-            padding.PKCS1v15(),
-
-            hashes.SHA1()
-        )
-
-        log(
-            "Assinatura RSA validada localmente"
-        )
-
-        # ====================================================
-        # 12. RECALCULA DIGEST PARA CONFERÊNCIA
-        # ====================================================
-
-        log(
-            "ETAPA 12: Conferindo DigestValue"
-        )
-
-        infNFe_c14n_check = canonicalizar(
-            infNFe
-        )
-
-        digest_check = base64.b64encode(
-
-            hashlib.sha1(
-                infNFe_c14n_check
-            ).digest()
-
-        ).decode("ascii")
-
-        if digest_check != digest_value:
-
+        if cert_xml_der != certificate_der:
             raise Exception(
-                "DigestValue mudou após "
-                "montagem da assinatura"
+                "Certificado inserido no XML "
+                "é diferente do certificado PFX"
             )
 
         log(
-            "DigestValue permanece válido"
+            "Certificado do XML é idêntico ao PFX"
         )
 
         # ====================================================
-        # 13. CONFERE ESTRUTURA
-        # ====================================================
-
-        filhos = [
-
-            etree.QName(
-                filho
-            ).localname
-
-            for filho in parent
-        ]
-
-        log(
-            f"Filhos da NFe: {filhos}"
-        )
-
-        if filhos[0] != "infNFe":
-
-            raise Exception(
-                "infNFe não é o primeiro "
-                "elemento da NFe"
-            )
-
-        if len(filhos) < 2:
-
-            raise Exception(
-                "Signature não encontrada "
-                "depois do infNFe"
-            )
-
-        if filhos[1] != "Signature":
-
-            raise Exception(
-                "Signature não está imediatamente "
-                "depois do infNFe"
-            )
-
-        # ====================================================
-        # 14. XML FINAL
+        # 15. SERIALIZAR
         # ====================================================
 
         log(
-            "ETAPA 14: Gerando XML final"
+            "ETAPA 12: Serializando XML assinado"
         )
 
         xml_final = etree.tostring(
-
-            xml,
-
+            xml_assinado,
             encoding="utf-8",
-
             xml_declaration=True,
-
             pretty_print=False
         )
 
         # ====================================================
-        # 15. REPARSE E CONFERE DIGEST
+        # 16. REABRIR XML
         # ====================================================
 
         log(
-            "ETAPA 15: Reabrindo XML final "
-            "para conferir estabilidade"
+            "ETAPA 13: Reabrindo XML final"
         )
 
         xml_check = etree.fromstring(
             xml_final
         )
 
-        infNFe_check = xml_check.find(
-            f".//{{{NAMESPACE_NFE}}}infNFe"
+        signature_check = xml_check.find(
+            f"./{{{NAMESPACE_DS}}}Signature"
         )
 
-        if infNFe_check is None:
-
+        if signature_check is None:
             raise Exception(
-                "infNFe desapareceu do XML final"
+                "Signature desapareceu após serialização"
             )
 
-        digest_final = base64.b64encode(
-
-            hashlib.sha1(
-
-                canonicalizar(
-                    infNFe_check
-                )
-
-            ).digest()
-
-        ).decode("ascii")
-
-        if digest_final != digest_value:
-
-            print(
-                f"DIGEST ORIGINAL: {digest_value}"
-            )
-
-            print(
-                f"DIGEST APÓS SERIALIZAÇÃO: "
-                f"{digest_final}"
-            )
-
-            raise Exception(
-                "DigestValue alterado após "
-                "serialização do XML"
-            )
+        # ====================================================
+        # 17. VERIFICAÇÃO CRIPTOGRÁFICA INDEPENDENTE
+        # ====================================================
 
         log(
-            "Digest permanece igual "
-            "após serialização"
+            "ETAPA 14: Verificando XMLDSig"
         )
 
+        try:
+
+            XMLVerifier().verify(
+                xml_check,
+                x509_cert=certificate_pem,
+                id_attribute="Id"
+            )
+
+            log(
+                "ASSINATURA XMLDSig VALIDADA COM SUCESSO"
+            )
+
+        except Exception as verify_error:
+
+            log(
+                "ERRO NA VERIFICAÇÃO XMLDSig"
+            )
+
+            log(
+                f"{type(verify_error).__name__}: "
+                f"{verify_error}"
+            )
+
+            raise Exception(
+                "A assinatura XML foi criada, "
+                "mas falhou na validação XMLDSig: "
+                f"{verify_error}"
+            )
+
         # ====================================================
-        # 16. DEBUG FINAL
+        # 18. CONFERIR ESTRUTURA FINAL
         # ====================================================
 
-        print("\n")
+        filhos = [
+            etree.QName(elemento).localname
+            for elemento in xml_check
+        ]
+
+        log(
+            f"Filhos da NFe: {filhos}"
+        )
+
+        if not filhos:
+            raise Exception(
+                "NFe sem elementos internos"
+            )
+
+        if filhos[0] != "infNFe":
+            raise Exception(
+                "infNFe não é o primeiro elemento da NFe"
+            )
+
+        if len(filhos) < 2:
+            raise Exception(
+                "Signature não encontrada após infNFe"
+            )
+
+        if filhos[1] != "Signature":
+            raise Exception(
+                "Signature não está imediatamente "
+                "depois do infNFe"
+            )
+
+        # ====================================================
+        # 19. DEBUG FINAL
+        # ====================================================
+
+        print()
         print("=" * 100)
         print(
             "=============== XML NFC-e "
@@ -1069,9 +582,7 @@ def assinar_xml(
         print("=" * 100)
 
         print(
-            xml_final.decode(
-                "utf-8"
-            )
+            xml_final.decode("utf-8")
         )
 
         print("=" * 100)
@@ -1080,21 +591,17 @@ def assinar_xml(
             "ASSINADO ==============="
         )
         print("=" * 100)
-        print("\n")
+        print()
 
         log(
-            f"DIGEST FINAL: {digest_value}"
-        )
-
-        log(
-            "===== FIM ASSINATURA XML ====="
+            "===== ASSINATURA NFC-e CONCLUÍDA ====="
         )
 
         return xml_final
 
     except Exception as e:
 
-        print("\n")
+        print()
         print("!" * 100)
         print(
             "=============== ERRO NA "
@@ -1115,7 +622,7 @@ def assinar_xml(
         )
 
         print("!" * 100)
-        print("\n")
+        print()
 
         log(
             "===== ERRO ASSINATURA XML ====="
