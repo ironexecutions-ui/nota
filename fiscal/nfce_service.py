@@ -5,7 +5,7 @@ import os
 
 from fastapi import APIRouter, Header, HTTPException
 
-from fiscal.database import conectar
+from database import conectar
 from .nfce_xml import gerar_xml_nfce
 from .nfce_assinatura import assinar_xml
 from .nfce_envio import enviar_nfce
