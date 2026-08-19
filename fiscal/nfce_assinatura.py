@@ -22,6 +22,7 @@ from cryptography.hazmat.backends import default_backend
 # ============================================================
 
 NAMESPACE_NFE = "http://www.portalfiscal.inf.br/nfe"
+
 NAMESPACE_DS = "http://www.w3.org/2000/09/xmldsig#"
 
 C14N_ALGORITHM = (
@@ -59,7 +60,7 @@ def log(msg):
 
 
 # ============================================================
-# CANONICALIZA XML
+# CANONICALIZA
 # ============================================================
 
 def canonicalizar(elemento):
@@ -83,24 +84,19 @@ def assinar_xml(
 ):
 
     """
-    Assina o infNFe da NFC-e utilizando:
+    Assinatura XMLDSig da NFC-e.
 
-    XMLDSig Enveloped
-    RSA-SHA1
-    SHA1
-    C14N 1.0
+    Estrutura:
 
-    Estrutura final:
+    NFe
+        infNFe
+        Signature
 
-    <NFe>
-        <infNFe>
-            ...
-        </infNFe>
+    Algoritmos:
 
-        <Signature>
-            ...
-        </Signature>
-    </NFe>
+    Canonicalização: C14N 1.0
+    Digest: SHA1
+    Assinatura: RSA-SHA1
     """
 
     log("===== INÍCIO ASSINATURA XML =====")
@@ -124,7 +120,7 @@ def assinar_xml(
             pfx_data = f.read()
 
         log(
-            f"Certificado carregado do disco | "
+            f"Certificado carregado | "
             f"{len(pfx_data)} bytes"
         )
 
@@ -132,7 +128,7 @@ def assinar_xml(
         # 2. ABRE PFX
         # ====================================================
 
-        log("ETAPA 2: Abrindo certificado PFX")
+        log("ETAPA 2: Abrindo PFX")
 
         (
             private_key,
@@ -150,43 +146,24 @@ def assinar_xml(
         if private_key is None:
 
             raise Exception(
-                "Chave privada não encontrada "
-                "no certificado"
+                "Chave privada não encontrada"
             )
 
         if certificate is None:
 
             raise Exception(
-                "Certificado não encontrado "
-                "no arquivo PFX"
+                "Certificado não encontrado"
             )
 
         log("Chave privada encontrada")
 
         log("Certificado encontrado")
 
-        if additional_certificates:
-
-            log(
-                f"Certificados adicionais encontrados: "
-                f"{len(additional_certificates)}"
-            )
-
-            log(
-                "Eles NÃO serão incluídos na assinatura"
-            )
-
-        else:
-
-            log(
-                "Nenhum certificado adicional será enviado"
-            )
-
         # ====================================================
-        # 3. PREPARA XML
+        # 3. PARSE XML
         # ====================================================
 
-        log("ETAPA 3: Preparando XML")
+        log("ETAPA 3: Fazendo parse do XML")
 
         if isinstance(xml_bytes, str):
 
@@ -195,39 +172,33 @@ def assinar_xml(
             )
 
         parser = etree.XMLParser(
-
             remove_blank_text=True,
-
             resolve_entities=False
         )
 
         xml = etree.fromstring(
-
             xml_bytes,
-
             parser=parser
         )
 
         log(
-            f"Elemento raiz recebido: "
-            f"{xml.tag}"
+            f"Raiz XML: {xml.tag}"
         )
 
         # ====================================================
         # 4. LOCALIZA infNFe
         # ====================================================
 
-        log("ETAPA 4: Procurando infNFe")
+        log("ETAPA 4: Localizando infNFe")
 
         infNFe = xml.find(
-
             f".//{{{NAMESPACE_NFE}}}infNFe"
         )
 
         if infNFe is None:
 
             raise Exception(
-                "Nó <infNFe> não encontrado no XML"
+                "infNFe não encontrado"
             )
 
         infNFe_id = infNFe.get("Id")
@@ -235,8 +206,7 @@ def assinar_xml(
         if not infNFe_id:
 
             raise Exception(
-                "Atributo Id do <infNFe> "
-                "não encontrado"
+                "Id do infNFe não encontrado"
             )
 
         if not infNFe_id.startswith("NFe"):
@@ -247,76 +217,29 @@ def assinar_xml(
             )
 
         log(
-            f"infNFe encontrado com Id: "
-            f"{infNFe_id}"
+            f"Id encontrado: {infNFe_id}"
         )
 
         # ====================================================
-        # 5. CONFERE ASSINATURA EXISTENTE
+        # 5. VERIFICA ASSINATURA EXISTENTE
         # ====================================================
-
-        log(
-            "ETAPA 5: Verificando assinatura existente"
-        )
 
         assinatura_existente = xml.find(
-
             f".//{{{NAMESPACE_DS}}}Signature"
         )
 
         if assinatura_existente is not None:
 
             raise Exception(
-                "XML já possui assinatura digital"
+                "XML já possui Signature"
             )
 
-        log(
-            "XML ainda não possui assinatura"
-        )
-
         # ====================================================
-        # 6. CANONICALIZA infNFe
+        # 6. CRIA SIGNATURE
         # ====================================================
 
         log(
-            "ETAPA 6: Canonicalizando infNFe"
-        )
-
-        infNFe_c14n = canonicalizar(
-            infNFe
-        )
-
-        log(
-            f"infNFe canonicalizado | "
-            f"{len(infNFe_c14n)} bytes"
-        )
-
-        # ====================================================
-        # 7. DIGEST SHA1
-        # ====================================================
-
-        log(
-            "ETAPA 7: Calculando DigestValue SHA1"
-        )
-
-        digest = hashlib.sha1(
-            infNFe_c14n
-        ).digest()
-
-        digest_value = base64.b64encode(
-            digest
-        ).decode("ascii")
-
-        log(
-            f"DigestValue: {digest_value}"
-        )
-
-        # ====================================================
-        # 8. CRIA SIGNATURE
-        # ====================================================
-
-        log(
-            "ETAPA 8: Criando estrutura Signature"
+            "ETAPA 6: Criando Signature"
         )
 
         signature = etree.Element(
@@ -327,7 +250,7 @@ def assinar_xml(
             ),
 
             nsmap={
-                None: NAMESPACE_DS
+                "ds": NAMESPACE_DS
             }
         )
 
@@ -360,9 +283,7 @@ def assinar_xml(
         )
 
         canonicalization_method.set(
-
             "Algorithm",
-
             C14N_ALGORITHM
         )
 
@@ -381,9 +302,7 @@ def assinar_xml(
         )
 
         signature_method.set(
-
             "Algorithm",
-
             SIGNATURE_ALGORITHM
         )
 
@@ -402,9 +321,7 @@ def assinar_xml(
         )
 
         reference.set(
-
             "URI",
-
             f"#{infNFe_id}"
         )
 
@@ -433,9 +350,7 @@ def assinar_xml(
         )
 
         transform_enveloped.set(
-
             "Algorithm",
-
             ENVELOPED_ALGORITHM
         )
 
@@ -450,9 +365,7 @@ def assinar_xml(
         )
 
         transform_c14n.set(
-
             "Algorithm",
-
             C14N_ALGORITHM
         )
 
@@ -471,14 +384,12 @@ def assinar_xml(
         )
 
         digest_method.set(
-
             "Algorithm",
-
             DIGEST_ALGORITHM
         )
 
         # ====================================================
-        # DigestValue
+        # DigestValue vazio por enquanto
         # ====================================================
 
         digest_value_element = etree.SubElement(
@@ -491,61 +402,8 @@ def assinar_xml(
             )
         )
 
-        digest_value_element.text = (
-            digest_value
-        )
-
-        log(
-            "Estrutura SignedInfo criada"
-        )
-
         # ====================================================
-        # 9. CANONICALIZA SignedInfo
-        # ====================================================
-
-        log(
-            "ETAPA 9: Canonicalizando SignedInfo"
-        )
-
-        signed_info_c14n = canonicalizar(
-            signed_info
-        )
-
-        log(
-            f"SignedInfo canonicalizado | "
-            f"{len(signed_info_c14n)} bytes"
-        )
-
-        # ====================================================
-        # 10. ASSINA SignedInfo COM RSA-SHA1
-        # ====================================================
-
-        log(
-            "ETAPA 10: Assinando SignedInfo "
-            "com RSA-SHA1"
-        )
-
-        assinatura_binaria = private_key.sign(
-
-            signed_info_c14n,
-
-            padding.PKCS1v15(),
-
-            hashes.SHA1()
-        )
-
-        signature_value = base64.b64encode(
-
-            assinatura_binaria
-
-        ).decode("ascii")
-
-        log(
-            "Assinatura RSA-SHA1 gerada"
-        )
-
-        # ====================================================
-        # SignatureValue
+        # SignatureValue vazio por enquanto
         # ====================================================
 
         signature_value_element = etree.SubElement(
@@ -558,17 +416,9 @@ def assinar_xml(
             )
         )
 
-        signature_value_element.text = (
-            signature_value
-        )
-
         # ====================================================
-        # 11. CERTIFICADO X509
+        # KeyInfo
         # ====================================================
-
-        log(
-            "ETAPA 11: Inserindo certificado X509"
-        )
 
         key_info = etree.SubElement(
 
@@ -608,21 +458,15 @@ def assinar_xml(
             cert_der
         ).decode("ascii")
 
-        x509_certificate.text = (
-            cert_base64
-        )
-
-        log(
-            "Certificado X509 inserido"
-        )
+        x509_certificate.text = cert_base64
 
         # ====================================================
-        # 12. INSERE SIGNATURE NA NFe
+        # 7. INSERE SIGNATURE NA ÁRVORE PRIMEIRO
         # ====================================================
 
         log(
-            "ETAPA 12: Inserindo Signature "
-            "depois do infNFe"
+            "ETAPA 7: Inserindo Signature "
+            "na estrutura final"
         )
 
         parent = infNFe.getparent()
@@ -630,8 +474,7 @@ def assinar_xml(
         if parent is None:
 
             raise Exception(
-                "Elemento pai de infNFe "
-                "não encontrado"
+                "Elemento NFe não encontrado"
             )
 
         indice_infNFe = parent.index(
@@ -639,78 +482,194 @@ def assinar_xml(
         )
 
         parent.insert(
-
             indice_infNFe + 1,
-
             signature
+        )
+
+        log(
+            "Signature inserida depois do infNFe"
+        )
+
+        # ====================================================
+        # 8. CALCULA DIGEST DO infNFe
+        # ====================================================
+
+        log(
+            "ETAPA 8: Canonicalizando infNFe"
+        )
+
+        infNFe_c14n = canonicalizar(
+            infNFe
+        )
+
+        log(
+            f"infNFe C14N: "
+            f"{len(infNFe_c14n)} bytes"
+        )
+
+        digest = hashlib.sha1(
+            infNFe_c14n
+        ).digest()
+
+        digest_value = base64.b64encode(
+            digest
+        ).decode("ascii")
+
+        digest_value_element.text = (
+            digest_value
+        )
+
+        log(
+            f"DigestValue: {digest_value}"
+        )
+
+        # ====================================================
+        # 9. CANONICALIZA SignedInfo JÁ NA ÁRVORE
+        # ====================================================
+
+        log(
+            "ETAPA 9: Canonicalizando SignedInfo "
+            "no contexto final"
+        )
+
+        signed_info_c14n = canonicalizar(
+            signed_info
+        )
+
+        log(
+            f"SignedInfo C14N: "
+            f"{len(signed_info_c14n)} bytes"
+        )
+
+        # ====================================================
+        # 10. RSA-SHA1
+        # ====================================================
+
+        log(
+            "ETAPA 10: Assinando SignedInfo "
+            "com RSA-SHA1"
+        )
+
+        assinatura_binaria = private_key.sign(
+
+            signed_info_c14n,
+
+            padding.PKCS1v15(),
+
+            hashes.SHA1()
+        )
+
+        signature_value = base64.b64encode(
+            assinatura_binaria
+        ).decode("ascii")
+
+        signature_value_element.text = (
+            signature_value
+        )
+
+        log(
+            "SignatureValue calculado"
+        )
+
+        # ====================================================
+        # 11. VERIFICAÇÃO LOCAL DA ASSINATURA
+        # ====================================================
+
+        log(
+            "ETAPA 11: Verificando assinatura "
+            "localmente"
+        )
+
+        certificate.public_key().verify(
+
+            assinatura_binaria,
+
+            signed_info_c14n,
+
+            padding.PKCS1v15(),
+
+            hashes.SHA1()
+        )
+
+        log(
+            "Assinatura RSA validada localmente"
+        )
+
+        # ====================================================
+        # 12. RECALCULA DIGEST PARA CONFERÊNCIA
+        # ====================================================
+
+        log(
+            "ETAPA 12: Conferindo DigestValue"
+        )
+
+        infNFe_c14n_check = canonicalizar(
+            infNFe
+        )
+
+        digest_check = base64.b64encode(
+
+            hashlib.sha1(
+                infNFe_c14n_check
+            ).digest()
+
+        ).decode("ascii")
+
+        if digest_check != digest_value:
+
+            raise Exception(
+                "DigestValue mudou após "
+                "montagem da assinatura"
+            )
+
+        log(
+            "DigestValue permanece válido"
         )
 
         # ====================================================
         # 13. CONFERE ESTRUTURA
         # ====================================================
 
-        log(
-            "ETAPA 13: Conferindo estrutura final"
-        )
+        filhos = [
 
-        filhos_nfe = []
+            etree.QName(
+                filho
+            ).localname
 
-        for filho in parent:
-
-            filhos_nfe.append(
-                etree.QName(
-                    filho
-                ).localname
-            )
+            for filho in parent
+        ]
 
         log(
-            f"Filhos da NFe: "
-            f"{filhos_nfe}"
+            f"Filhos da NFe: {filhos}"
         )
 
-        if "infNFe" not in filhos_nfe:
+        if filhos[0] != "infNFe":
 
             raise Exception(
-                "infNFe não encontrado "
-                "na estrutura final"
+                "infNFe não é o primeiro "
+                "elemento da NFe"
             )
 
-        if "Signature" not in filhos_nfe:
+        if len(filhos) < 2:
 
             raise Exception(
                 "Signature não encontrada "
-                "na estrutura final"
+                "depois do infNFe"
+            )
+
+        if filhos[1] != "Signature":
+
+            raise Exception(
+                "Signature não está imediatamente "
+                "depois do infNFe"
             )
 
         # ====================================================
-        # 14. CONFERE ALGORITMOS
+        # 14. XML FINAL
         # ====================================================
 
         log(
-            "ETAPA 14: Conferindo algoritmos"
-        )
-
-        log(
-            f"SignatureMethod: "
-            f"{SIGNATURE_ALGORITHM}"
-        )
-
-        log(
-            f"DigestMethod: "
-            f"{DIGEST_ALGORITHM}"
-        )
-
-        log(
-            f"Canonicalization: "
-            f"{C14N_ALGORITHM}"
-        )
-
-        # ====================================================
-        # 15. GERA XML FINAL
-        # ====================================================
-
-        log(
-            "ETAPA 15: Gerando XML final"
+            "ETAPA 14: Gerando XML final"
         )
 
         xml_final = etree.tostring(
@@ -725,34 +684,71 @@ def assinar_xml(
         )
 
         # ====================================================
-        # 16. VALIDA SINTAXE
+        # 15. REPARSE E CONFERE DIGEST
         # ====================================================
 
         log(
-            "ETAPA 16: Validando sintaxe XML"
+            "ETAPA 15: Reabrindo XML final "
+            "para conferir estabilidade"
         )
 
-        etree.fromstring(
+        xml_check = etree.fromstring(
             xml_final
         )
 
+        infNFe_check = xml_check.find(
+            f".//{{{NAMESPACE_NFE}}}infNFe"
+        )
+
+        if infNFe_check is None:
+
+            raise Exception(
+                "infNFe desapareceu do XML final"
+            )
+
+        digest_final = base64.b64encode(
+
+            hashlib.sha1(
+
+                canonicalizar(
+                    infNFe_check
+                )
+
+            ).digest()
+
+        ).decode("ascii")
+
+        if digest_final != digest_value:
+
+            print(
+                f"DIGEST ORIGINAL: {digest_value}"
+            )
+
+            print(
+                f"DIGEST APÓS SERIALIZAÇÃO: "
+                f"{digest_final}"
+            )
+
+            raise Exception(
+                "DigestValue alterado após "
+                "serialização do XML"
+            )
+
         log(
-            "XML final possui sintaxe válida"
+            "Digest permanece igual "
+            "após serialização"
         )
 
         # ====================================================
-        # DEBUG
+        # 16. DEBUG FINAL
         # ====================================================
 
         print("\n")
-
         print("=" * 100)
-
         print(
             "=============== XML NFC-e "
             "ASSINADO ==============="
         )
-
         print("=" * 100)
 
         print(
@@ -762,15 +758,16 @@ def assinar_xml(
         )
 
         print("=" * 100)
-
         print(
             "=============== FIM XML NFC-e "
             "ASSINADO ==============="
         )
-
         print("=" * 100)
-
         print("\n")
+
+        log(
+            f"DIGEST FINAL: {digest_value}"
+        )
 
         log(
             "===== FIM ASSINATURA XML ====="
@@ -781,14 +778,11 @@ def assinar_xml(
     except Exception as e:
 
         print("\n")
-
         print("!" * 100)
-
         print(
             "=============== ERRO NA "
             "ASSINATURA NFC-e ==============="
         )
-
         print("!" * 100)
 
         print(
@@ -804,7 +798,6 @@ def assinar_xml(
         )
 
         print("!" * 100)
-
         print("\n")
 
         log(
