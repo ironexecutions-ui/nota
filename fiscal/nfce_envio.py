@@ -4,6 +4,7 @@ import urllib3
 from lxml import etree
 
 import hashlib
+import base64
 import tempfile
 import os
 import shutil
@@ -24,6 +25,8 @@ from cryptography.hazmat.primitives.serialization import (
 )
 
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding
 
 
 # ==========================================
@@ -235,6 +238,102 @@ def _normalizar_xml_nfce(
     )
 
     return raiz
+
+
+# ==========================================
+# VALIDAR ASSINATURA NO CONTEXTO ATUAL
+# ==========================================
+def _validar_assinatura_contexto(raiz, etapa):
+    """
+    Revalida DigestValue e SignatureValue no contexto XML atual.
+    Isso detecta qualquer alteração causada ao inserir a NFe no lote
+    ou no envelope SOAP antes do envio à SEFAZ.
+    """
+
+    DS_NS = "http://www.w3.org/2000/09/xmldsig#"
+
+    log(f"Validando assinatura no contexto: {etapa}")
+
+    nfe = raiz if etree.QName(raiz).localname == "NFe" else raiz.find(
+        f".//{{{NFE_NS}}}NFe"
+    )
+
+    if nfe is None:
+        raise Exception(f"NFe não encontrada durante validação: {etapa}")
+
+    inf_nfe = nfe.find(f"{{{NFE_NS}}}infNFe")
+    signature = nfe.find(f"{{{DS_NS}}}Signature")
+
+    if inf_nfe is None or signature is None:
+        raise Exception(f"Estrutura de assinatura incompleta: {etapa}")
+
+    signed_info = signature.find(f"{{{DS_NS}}}SignedInfo")
+    signature_value_el = signature.find(f"{{{DS_NS}}}SignatureValue")
+    digest_value_el = signature.find(
+        f"{{{DS_NS}}}SignedInfo/{{{DS_NS}}}Reference/{{{DS_NS}}}DigestValue"
+    )
+    cert_el = signature.find(
+        f"{{{DS_NS}}}KeyInfo/{{{DS_NS}}}X509Data/{{{DS_NS}}}X509Certificate"
+    )
+
+    if any(x is None for x in (signed_info, signature_value_el, digest_value_el, cert_el)):
+        raise Exception(f"Campos XMLDSig ausentes: {etapa}")
+
+    inf_c14n = etree.tostring(
+        inf_nfe,
+        method="c14n",
+        exclusive=False,
+        with_comments=False
+    )
+
+    digest_calculado = base64.b64encode(
+        hashlib.sha1(inf_c14n).digest()
+    ).decode("ascii")
+
+    digest_esperado = (digest_value_el.text or "").strip()
+
+    log(f"[{etapa}] Digest esperado: {digest_esperado}")
+    log(f"[{etapa}] Digest calculado: {digest_calculado}")
+
+    if digest_calculado != digest_esperado:
+        raise Exception(
+            f"DigestValue foi alterado no contexto {etapa}. "
+            f"Esperado={digest_esperado} Calculado={digest_calculado}"
+        )
+
+    signed_info_c14n = etree.tostring(
+        signed_info,
+        method="c14n",
+        exclusive=False,
+        with_comments=False
+    )
+
+    cert_der = base64.b64decode("".join((cert_el.text or "").split()))
+
+    from cryptography import x509
+    certificado_xml = x509.load_der_x509_certificate(cert_der)
+
+    assinatura = base64.b64decode(
+        "".join((signature_value_el.text or "").split())
+    )
+
+    try:
+        certificado_xml.public_key().verify(
+            assinatura,
+            signed_info_c14n,
+            padding.PKCS1v15(),
+            hashes.SHA1()
+        )
+    except Exception as e:
+        raise Exception(
+            f"SignatureValue inválido no contexto {etapa}: {e}"
+        )
+
+    log(f"[{etapa}] DigestValue válido")
+    log(f"[{etapa}] SignatureValue válido")
+    log(f"[{etapa}] ASSINATURA ÍNTEGRA")
+
+    return True
 
 
 # ==========================================
@@ -487,6 +586,14 @@ def enviar_nfce(
             nfe_element
         )
 
+        # Revalida depois de inserir a NFe no enviNFe.
+        # Se o contexto de namespaces alterar a assinatura,
+        # o envio é interrompido aqui antes de chegar à SEFAZ.
+        _validar_assinatura_contexto(
+            envi_nfe,
+            "APOS_INSERIR_NO_LOTE"
+        )
+
         lote_bytes = etree.tostring(
             envi_nfe,
             encoding="utf-8",
@@ -526,6 +633,13 @@ def enviar_nfce(
         # ==========================================
         soap_element = _montar_soap(
             envi_nfe
+        )
+
+        # Validação final exatamente no contexto que será serializado
+        # e enviado pela requisição HTTP.
+        _validar_assinatura_contexto(
+            soap_element,
+            "DENTRO_DO_SOAP"
         )
 
         soap_bytes = etree.tostring(
