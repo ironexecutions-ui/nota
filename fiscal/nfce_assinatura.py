@@ -1,5 +1,7 @@
 from datetime import datetime
-
+from cryptography import x509
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509.oid import ExtensionOID
 import base64
 import hashlib
 
@@ -275,7 +277,73 @@ def assinar_xml(
             f"CERTIFICADOS ADICIONAIS NO PFX: "
             f"{len(additional_certificates or [])}"
         )
+        # ====================================================
+        # DIAGNÓSTICO PROFUNDO DO CERTIFICADO
+        # ====================================================
 
+        log("===== DIAGNÓSTICO PROFUNDO CERTIFICADO =====")
+
+        cert_der_debug = certificate.public_bytes(
+            Encoding.DER
+        )
+
+        sha1_fingerprint = certificate.fingerprint(
+            hashes.SHA1()
+        ).hex().upper()
+
+        sha256_fingerprint = certificate.fingerprint(
+            hashes.SHA256()
+        ).hex().upper()
+
+        log(
+            f"FINGERPRINT SHA1: "
+            f"{sha1_fingerprint}"
+        )
+
+        log(
+            f"FINGERPRINT SHA256: "
+            f"{sha256_fingerprint}"
+        )
+
+        log(
+            f"TAMANHO CERTIFICADO DER: "
+            f"{len(cert_der_debug)} bytes"
+        )
+
+        public_key = certificate.public_key()
+
+        log(
+            f"TIPO CHAVE PÚBLICA: "
+            f"{type(public_key).__name__}"
+        )
+
+        if isinstance(public_key, rsa.RSAPublicKey):
+
+            log(
+                f"TAMANHO CHAVE RSA: "
+                f"{public_key.key_size} bits"
+            )
+
+        log(
+            f"ALGORITMO ASSINATURA CERTIFICADO: "
+            f"{certificate.signature_algorithm_oid.dotted_string}"
+        )
+
+        try:
+
+            log(
+                f"HASH ASSINATURA CERTIFICADO: "
+                f"{certificate.signature_hash_algorithm.name}"
+            )
+
+        except Exception as e:
+
+            log(
+                f"HASH ASSINATURA CERTIFICADO: "
+                f"não identificado | {e}"
+            )
+
+        log("===== FIM DIAGNÓSTICO PROFUNDO =====")
         log("===== FIM DEBUG CERTIFICADO =====")
 
         # ====================================================
@@ -578,7 +646,118 @@ def assinar_xml(
         ).decode("ascii")
 
         x509_certificate.text = cert_base64
+        # ====================================================
+        # DIAGNÓSTICO X509Certificate DO XML
+        # ====================================================
 
+        log(
+            "===== DIAGNÓSTICO X509Certificate XML ====="
+        )
+
+        certificado_xml_base64 = (
+            x509_certificate.text or ""
+        ).strip()
+
+        log(
+            f"TAMANHO BASE64 NO XML: "
+            f"{len(certificado_xml_base64)} caracteres"
+        )
+
+        try:
+
+            certificado_xml_der = base64.b64decode(
+                certificado_xml_base64,
+                validate=True
+            )
+
+            log(
+                f"TAMANHO DER EXTRAÍDO DO XML: "
+                f"{len(certificado_xml_der)} bytes"
+            )
+
+            certificado_do_xml = (
+                x509.load_der_x509_certificate(
+                    certificado_xml_der
+                )
+            )
+
+            xml_sha1 = certificado_do_xml.fingerprint(
+                hashes.SHA1()
+            ).hex().upper()
+
+            xml_sha256 = certificado_do_xml.fingerprint(
+                hashes.SHA256()
+            ).hex().upper()
+
+            log(
+                f"XML CERT SHA1: "
+                f"{xml_sha1}"
+            )
+
+            log(
+                f"XML CERT SHA256: "
+                f"{xml_sha256}"
+            )
+
+            log(
+                f"XML CERT SUBJECT: "
+                f"{certificado_do_xml.subject.rfc4514_string()}"
+            )
+
+            log(
+                f"XML CERT ISSUER: "
+                f"{certificado_do_xml.issuer.rfc4514_string()}"
+            )
+
+            log(
+                f"XML CERT SERIAL: "
+                f"{certificado_do_xml.serial_number}"
+            )
+
+            if cert_der_debug == certificado_xml_der:
+
+                log(
+                    "RESULTADO CERTIFICADO: "
+                    "PFX E X509Certificate SÃO "
+                    "100% IDÊNTICOS"
+                )
+
+            else:
+
+                log(
+                    "ERRO CRÍTICO: CERTIFICADO DO "
+                    "PFX É DIFERENTE DO CERTIFICADO "
+                    "COLOCADO NO XML"
+                )
+
+            if (
+                sha256_fingerprint
+                == xml_sha256
+            ):
+
+                log(
+                    "FINGERPRINT SHA256 CONFERE"
+                )
+
+            else:
+
+                log(
+                    "ERRO: FINGERPRINT SHA256 "
+                    "NÃO CONFERE"
+                )
+
+        except Exception as e:
+
+            log(
+                "ERRO AO REABRIR CERTIFICADO "
+                f"DO X509Certificate: {e}"
+            )
+
+            raise
+
+        log(
+            "===== FIM DIAGNÓSTICO X509Certificate ====="
+        )
         # ====================================================
         # 7. INSERE SIGNATURE NA ÁRVORE PRIMEIRO
         # ====================================================
