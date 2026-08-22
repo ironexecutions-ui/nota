@@ -1,19 +1,39 @@
 import os
 import mysql.connector
+
 from dotenv import load_dotenv
 
+
 # =========================
-# CARREGAR VARIÁVEIS .ENV
+# CARREGAR .ENV
 # =========================
 
 load_dotenv()
 
 
+# esse aqui é da notas fiscais
+
 # =========================
-# CONFIGURAÇÃO DO BANCO
+# CONTROLE DE CONEXÃO
 # =========================
 
-CONFIG_BANCO = {
+USAR_ONLINE = True  # True = banco online | False = banco local
+
+
+# =========================
+# CONFIGURAÇÕES
+# =========================
+
+CONFIG_LOCAL = {
+    "host": "localhost",
+    "user": "root",
+    "password": "26374246",
+    "database": "ironexecutions",
+    "port": 3306
+}
+
+
+CONFIG_ONLINE = {
     "host": os.getenv("DB_HOST", "127.0.0.1"),
     "user": os.getenv("DB_USER"),
     "password": os.getenv("DB_PASSWORD"),
@@ -27,86 +47,5 @@ CONFIG_BANCO = {
 # =========================
 
 def conectar():
-    return mysql.connector.connect(**CONFIG_BANCO)
-
-
-# =========================
-# HELPERS
-# =========================
-
-def executar_select(query, params=None):
-    conn = conectar()
-    cursor = conn.cursor(dictionary=True)
-
-    try:
-        cursor.execute(query, params or ())
-        return cursor.fetchall()
-
-    finally:
-        cursor.close()
-        conn.close()
-
-
-def executar_comando(query, params=None):
-    conn = conectar()
-    cursor = conn.cursor()
-
-    try:
-        cursor.execute(query, params or ())
-        conn.commit()
-
-    except Exception:
-        conn.rollback()
-        raise
-
-    finally:
-        cursor.close()
-        conn.close()
-
-
-def executar_insert(query, params=None):
-    conn = conectar()
-    cursor = conn.cursor()
-
-    try:
-        cursor.execute(query, params or ())
-        conn.commit()
-        return cursor.lastrowid
-
-    except Exception:
-        conn.rollback()
-        raise
-
-    finally:
-        cursor.close()
-        conn.close()
-
-
-def executar_update(query, params=None):
-    conn = conectar()
-    cursor = conn.cursor()
-
-    try:
-        cursor.execute(query, params or ())
-        conn.commit()
-        return cursor.rowcount
-
-    except Exception:
-        conn.rollback()
-        raise
-
-    finally:
-        cursor.close()
-        conn.close()
-
-
-def obter_comercio_id_do_cliente(cliente_id: int):
-    sql = """
-        SELECT comercio_id
-        FROM clientes
-        WHERE id = %s
-    """
-
-    res = executar_select(sql, (cliente_id,))
-
-    return res[0]["comercio_id"] if res else None
+    config = CONFIG_ONLINE if USAR_ONLINE else CONFIG_LOCAL
+    return mysql.connector.connect(**config)
