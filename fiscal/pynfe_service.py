@@ -175,7 +175,35 @@ def emitir_com_pynfe(
             id_lote=1,
             ind_sinc=1
         )
-
+        log_pynfe(f"Tipo retorno PyNFe: {type(resposta)}")
+        log_pynfe(f"RETORNO BRUTO PyNFe: {repr(resposta)}")
+        
+        if isinstance(resposta, tuple):
+            log_pynfe(f"Quantidade de elementos da tuple: {len(resposta)}")
+        
+            for indice, parte in enumerate(resposta):
+                log_pynfe(
+                    f"PARTE [{indice}] tipo={type(parte)}"
+                )
+        
+                try:
+                    if isinstance(parte, etree._Element):
+                        conteudo = etree.tostring(
+                            parte,
+                            encoding="unicode",
+                            pretty_print=True
+                        )
+                    else:
+                        conteudo = str(parte)
+        
+                    log_pynfe(
+                        f"PARTE [{indice}] conteúdo:\n{conteudo}"
+                    )
+        
+                except Exception as erro_debug:
+                    log_pynfe(
+                        f"Erro lendo PARTE [{indice}]: {erro_debug}"
+                    )
         log_pynfe(
             f"Tipo retorno PyNFe: {type(resposta)}"
         )
