@@ -2,7 +2,10 @@ from datetime import datetime
 
 
 def log(msg):
-    print(f"[NFCe-VALIDACAO][{datetime.now().strftime('%H:%M:%S')}] {msg}")
+    print(
+        f"[NFCe-VALIDACAO]"
+        f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"
+    )
 
 
 def validar_comercio_fiscal(fiscal):
@@ -41,7 +44,7 @@ def validar_comercio_fiscal(fiscal):
         raise Exception(msg)
 
     # ===============================
-    # VALIDAÇÕES DE NEGÓCIO
+    # AMBIENTE
     # ===============================
 
     log("Validando ambiente de emissão")
@@ -51,7 +54,9 @@ def validar_comercio_fiscal(fiscal):
     ).strip().lower()
 
     if ambiente not in ["homologacao", "producao"]:
-        raise Exception("Ambiente de emissão inválido")
+        raise Exception(
+            "Ambiente de emissão inválido"
+        )
 
     # ===============================
     # SÉRIE NFC-e
@@ -59,10 +64,14 @@ def validar_comercio_fiscal(fiscal):
 
     log("Validando série da NFC-e")
 
-    serie = str(fiscal["serie_nfce"]).strip()
+    serie = str(
+        fiscal["serie_nfce"]
+    ).strip()
 
     if not serie.isdigit():
-        raise Exception("Série da NFC-e inválida")
+        raise Exception(
+            "Série da NFC-e inválida"
+        )
 
     if int(serie) <= 0:
         raise Exception(
@@ -95,13 +104,17 @@ def validar_comercio_fiscal(fiscal):
 
     log("Validando CRT")
 
-    crt = str(fiscal["crt"]).strip()
+    crt = str(
+        fiscal["crt"]
+    ).strip()
 
     log(f"CRT RECEBIDO: [{crt}]")
 
     if crt not in ["1", "2", "3", "4"]:
         raise Exception(
-            "CRT inválido. Use 1 (Simples), 2 ou 3"
+            "CRT inválido. "
+            "Use 1 (Simples Nacional), "
+            "2, 3 ou 4 (MEI)"
         )
 
     # ===============================
@@ -110,17 +123,28 @@ def validar_comercio_fiscal(fiscal):
 
     log("Validando CSC")
 
-    csc_id = str(fiscal["csc_id"]).strip()
+    csc_id = str(
+        fiscal["csc_id"]
+    ).strip()
 
     if not csc_id.isdigit():
-        raise Exception("CSC ID inválido")
+        raise Exception(
+            "CSC ID inválido"
+        )
 
-    csc_token = str(fiscal["csc_token"]).strip()
+    csc_token = str(
+        fiscal["csc_token"]
+    ).strip()
 
     if len(csc_token) < 10:
-        raise Exception("CSC Token inválido")
+        raise Exception(
+            "CSC Token inválido"
+        )
 
-    log("Validação fiscal do comércio concluída com sucesso")
+    log(
+        "Validação fiscal do comércio "
+        "concluída com sucesso"
+    )
 
 
 def validar_produto_fiscal(produto):
@@ -129,6 +153,10 @@ def validar_produto_fiscal(produto):
         f"Validando produto fiscal | "
         f"Produto ID: {produto.get('id')}"
     )
+
+    # ===============================
+    # CAMPOS OBRIGATÓRIOS
+    # ===============================
 
     obrigatorios = [
         "cfop",
@@ -162,10 +190,14 @@ def validar_produto_fiscal(produto):
 
     log("Validando CFOP")
 
-    cfop = str(produto["cfop"]).strip()
+    cfop = str(
+        produto["cfop"]
+    ).strip()
 
     if not cfop.isdigit():
-        raise Exception("CFOP inválido")
+        raise Exception(
+            "CFOP inválido"
+        )
 
     # ===============================
     # ORIGEM
@@ -173,9 +205,11 @@ def validar_produto_fiscal(produto):
 
     log("Validando origem do produto")
 
-    origem = str(produto["origem"]).strip()
+    origem = str(
+        produto["origem"]
+    ).strip()
 
-    if origem not in [
+    origens_validas = [
         "0",
         "1",
         "2",
@@ -185,8 +219,12 @@ def validar_produto_fiscal(produto):
         "6",
         "7",
         "8"
-    ]:
-        raise Exception("Origem do produto inválida")
+    ]
+
+    if origem not in origens_validas:
+        raise Exception(
+            "Origem do produto inválida"
+        )
 
     # ===============================
     # CST / CSOSN
@@ -198,10 +236,15 @@ def validar_produto_fiscal(produto):
         produto["cst_csosn"]
     ).strip()
 
-    log(f"CST/CSOSN RECEBIDO: [{cst_csosn}]")
+    log(
+        f"CST/CSOSN RECEBIDO: "
+        f"[{cst_csosn}]"
+    )
 
     if not cst_csosn.isdigit():
-        raise Exception("CST/CSOSN inválido")
+        raise Exception(
+            "CST/CSOSN inválido"
+        )
 
     # ===============================
     # CRT
@@ -211,32 +254,54 @@ def validar_produto_fiscal(produto):
         produto.get("crt", "")
     ).strip()
 
-    log(f"CRT RECEBIDO NO PRODUTO: [{crt}]")
+    log(
+        f"CRT RECEBIDO NO PRODUTO: "
+        f"[{crt}]"
+    )
+
+    if crt not in ["1", "2", "3", "4"]:
+        raise Exception(
+            f"CRT inválido no produto: {crt}"
+        )
 
     # ===============================
     # CST x CSOSN
     # ===============================
 
     log(
-        f"Validando CST/CSOSN conforme CRT ({crt})"
+        f"Validando CST/CSOSN "
+        f"conforme CRT ({crt})"
     )
-if crt in ["1", "4"]:
 
-    # Simples Nacional / MEI → CSOSN
-    if len(cst_csosn) != 3:
+    if crt in ["1", "4"]:
 
-        raise Exception(
-            "CSOSN inválido para Simples Nacional/MEI"
+        # Simples Nacional / MEI usa CSOSN
+
+        if len(cst_csosn) != 3:
+            raise Exception(
+                "CSOSN inválido para "
+                "Simples Nacional/MEI"
+            )
+
+        log(
+            f"CSOSN {cst_csosn} aceito "
+            f"para CRT {crt}"
         )
 
-else:
+    else:
 
-    # Regime Normal → CST
-    if len(cst_csosn) != 2:
+        # Regime normal usa CST
 
-        raise Exception(
-            "CST inválido para regime normal"
+        if len(cst_csosn) != 2:
+            raise Exception(
+                "CST inválido para regime normal"
+            )
+
+        log(
+            f"CST {cst_csosn} aceito "
+            f"para CRT {crt}"
         )
+
     # ===============================
     # PRODUTO x SERVIÇO
     # ===============================
@@ -250,7 +315,6 @@ else:
     if tipo == "servico":
 
         if not produto.get("codigo_servico"):
-
             raise Exception(
                 "Serviço sem código de serviço"
             )
@@ -261,14 +325,27 @@ else:
         # NCM
         # ===============================
 
+        log("Validando NCM")
+
         ncm = str(
             produto.get("ncm", "")
         ).replace(".", "").strip()
 
         if not ncm:
-            raise Exception("Produto sem NCM")
+            raise Exception(
+                "Produto sem NCM"
+            )
 
         if not ncm.isdigit():
-            raise Exception("NCM inválido")
+            raise Exception(
+                "NCM inválido"
+            )
 
-    log("Produto validado com sucesso")
+        log(
+            f"NCM validado: {ncm}"
+        )
+
+    log(
+        f"Produto {produto.get('id')} "
+        f"validado com sucesso"
+    )
