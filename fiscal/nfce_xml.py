@@ -323,7 +323,208 @@ def gerar_icms(
     raise Exception(
         f"CRT {crt} inválido ou não suportado"
     )
+# ==========================================
+# IBS / CBS
+# ==========================================
+def gerar_ibscbs(
+    imposto,
+    item,
+    valor_produto
+):
+    log(
+        f"Gerando IBS/CBS do produto "
+        f"{item.get('id')}"
+    )
 
+    cst = somente_numeros(
+        item.get("cst_ibscbs")
+    )
+
+    cclass_trib = somente_numeros(
+        item.get("cclass_trib")
+    )
+
+    if not cst:
+        raise Exception(
+            f"CST IBS/CBS não informado "
+            f"no produto {item.get('id')}"
+        )
+
+    if not cclass_trib:
+        raise Exception(
+            f"cClassTrib não informado "
+            f"no produto {item.get('id')}"
+        )
+
+    if len(cst) != 3:
+        raise Exception(
+            f"CST IBS/CBS inválido no produto "
+            f"{item.get('id')}: {cst}"
+        )
+
+    if len(cclass_trib) != 6:
+        raise Exception(
+            f"cClassTrib inválido no produto "
+            f"{item.get('id')}: {cclass_trib}"
+        )
+
+    aliquota_ibs_uf = float(
+        item.get("aliquota_ibs_uf") or 0
+    )
+
+    aliquota_ibs_mun = float(
+        item.get("aliquota_ibs_mun") or 0
+    )
+
+    aliquota_cbs = float(
+        item.get("aliquota_cbs") or 0
+    )
+
+    # Base de cálculo
+    valor_bc = round(
+        float(valor_produto),
+        2
+    )
+
+    # Valores calculados
+    valor_ibs_uf = round(
+        valor_bc * aliquota_ibs_uf / 100,
+        2
+    )
+
+    valor_ibs_mun = round(
+        valor_bc * aliquota_ibs_mun / 100,
+        2
+    )
+
+    valor_ibs = round(
+        valor_ibs_uf + valor_ibs_mun,
+        2
+    )
+
+    valor_cbs = round(
+        valor_bc * aliquota_cbs / 100,
+        2
+    )
+
+    # ==========================================
+    # IBSCBS
+    # ==========================================
+    ibscbs = criar_elemento(
+        imposto,
+        "IBSCBS"
+    )
+
+    criar_elemento(
+        ibscbs,
+        "CST",
+        cst
+    )
+
+    criar_elemento(
+        ibscbs,
+        "cClassTrib",
+        cclass_trib
+    )
+
+    # ==========================================
+    # gIBSCBS
+    # ==========================================
+    gibscbs = criar_elemento(
+        ibscbs,
+        "gIBSCBS"
+    )
+
+    criar_elemento(
+        gibscbs,
+        "vBC",
+        f"{valor_bc:.2f}"
+    )
+
+    # ==========================================
+    # IBS UF
+    # ==========================================
+    gibs_uf = criar_elemento(
+        gibscbs,
+        "gIBSUF"
+    )
+
+    criar_elemento(
+        gibs_uf,
+        "pIBSUF",
+        f"{aliquota_ibs_uf:.4f}"
+    )
+
+    criar_elemento(
+        gibs_uf,
+        "vIBSUF",
+        f"{valor_ibs_uf:.2f}"
+    )
+
+    # ==========================================
+    # IBS MUNICÍPIO
+    # ==========================================
+    gibs_mun = criar_elemento(
+        gibscbs,
+        "gIBSMun"
+    )
+
+    criar_elemento(
+        gibs_mun,
+        "pIBSMun",
+        f"{aliquota_ibs_mun:.4f}"
+    )
+
+    criar_elemento(
+        gibs_mun,
+        "vIBSMun",
+        f"{valor_ibs_mun:.2f}"
+    )
+
+    # ==========================================
+    # IBS TOTAL
+    # ==========================================
+    criar_elemento(
+        gibscbs,
+        "vIBS",
+        f"{valor_ibs:.2f}"
+    )
+
+    # ==========================================
+    # CBS
+    # ==========================================
+    gcbs = criar_elemento(
+        gibscbs,
+        "gCBS"
+    )
+
+    criar_elemento(
+        gcbs,
+        "pCBS",
+        f"{aliquota_cbs:.4f}"
+    )
+
+    criar_elemento(
+        gcbs,
+        "vCBS",
+        f"{valor_cbs:.2f}"
+    )
+
+    log(
+        f"IBS/CBS produto {item.get('id')} | "
+        f"BC={valor_bc:.2f} | "
+        f"IBSUF={valor_ibs_uf:.2f} | "
+        f"IBSMun={valor_ibs_mun:.2f} | "
+        f"CBS={valor_cbs:.2f}"
+    )
+
+    return {
+        "vBC": valor_bc,
+        "vIBSUF": valor_ibs_uf,
+        "vIBSMun": valor_ibs_mun,
+        "vIBS": valor_ibs,
+        "vCBS": valor_cbs
+    }
 
 # ==========================================
 # XML NFC-e
@@ -820,6 +1021,12 @@ def gerar_xml_nfce(
     )
 
     total_produtos = 0.0
+    
+    total_bc_ibscbs = 0.0
+    total_ibs_uf = 0.0
+    total_ibs_mun = 0.0
+    total_ibs = 0.0
+    total_cbs = 0.0
 
     for idx, item in enumerate(
         itens,
@@ -1067,7 +1274,20 @@ def gerar_xml_nfce(
             "CST",
             "08"
         )
+        # ==========================================
+        # IBS / CBS
+        # ==========================================
+        valores_ibscbs = gerar_ibscbs(
+            imposto,
+            item,
+            v_prod
+        )
 
+        total_bc_ibscbs += valores_ibscbs["vBC"]
+        total_ibs_uf += valores_ibscbs["vIBSUF"]
+        total_ibs_mun += valores_ibscbs["vIBSMun"]
+        total_ibs += valores_ibscbs["vIBS"]
+        total_cbs += valores_ibscbs["vCBS"]
         log(
             f"Item {idx} concluído | "
             f"Valor: {v_prod:.2f}"
@@ -1185,7 +1405,129 @@ def gerar_xml_nfce(
             tag,
             valor
         )
+    # ==========================================
+    # TOTAL IBS / CBS
+    # ==========================================
+    ibscbs_tot = criar_elemento(
+        total,
+        "IBSCBSTot"
+    )
 
+    criar_elemento(
+        ibscbs_tot,
+        "vBCIBSCBS",
+        f"{total_bc_ibscbs:.2f}"
+    )
+
+    # ==========================================
+    # TOTAL IBS
+    # ==========================================
+    gibs = criar_elemento(
+        ibscbs_tot,
+        "gIBS"
+    )
+
+    gibs_uf = criar_elemento(
+        gibs,
+        "gIBSUF"
+    )
+
+    criar_elemento(
+        gibs_uf,
+        "vDif",
+        "0.00"
+    )
+
+    criar_elemento(
+        gibs_uf,
+        "vDevTrib",
+        "0.00"
+    )
+
+    criar_elemento(
+        gibs_uf,
+        "vIBSUF",
+        f"{total_ibs_uf:.2f}"
+    )
+
+    gibs_mun = criar_elemento(
+        gibs,
+        "gIBSMun"
+    )
+
+    criar_elemento(
+        gibs_mun,
+        "vDif",
+        "0.00"
+    )
+
+    criar_elemento(
+        gibs_mun,
+        "vDevTrib",
+        "0.00"
+    )
+
+    criar_elemento(
+        gibs_mun,
+        "vIBSMun",
+        f"{total_ibs_mun:.2f}"
+    )
+
+    criar_elemento(
+        gibs,
+        "vIBS",
+        f"{total_ibs:.2f}"
+    )
+
+    criar_elemento(
+        gibs,
+        "vCredPres",
+        "0.00"
+    )
+
+    criar_elemento(
+        gibs,
+        "vCredPresCondSus",
+        "0.00"
+    )
+
+    # ==========================================
+    # TOTAL CBS
+    # ==========================================
+    gcbs = criar_elemento(
+        ibscbs_tot,
+        "gCBS"
+    )
+
+    criar_elemento(
+        gcbs,
+        "vDif",
+        "0.00"
+    )
+
+    criar_elemento(
+        gcbs,
+        "vDevTrib",
+        "0.00"
+    )
+
+    criar_elemento(
+        gcbs,
+        "vCBS",
+        f"{total_cbs:.2f}"
+    )
+
+    criar_elemento(
+        gcbs,
+        "vCredPres",
+        "0.00"
+    )
+
+    criar_elemento(
+        gcbs,
+        "vCredPresCondSus",
+        "0.00"
+    )
     # ==========================================
     # TRANSPORTE
     # ==========================================
