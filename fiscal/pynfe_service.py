@@ -191,7 +191,7 @@ def emitir_com_pynfe(
     certificado_path,
     certificado_senha,
     uf,
-    homologacao=True
+    homologacao
 ):
 
     log_pynfe("========================================")
