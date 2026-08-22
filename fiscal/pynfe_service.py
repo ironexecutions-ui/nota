@@ -170,7 +170,7 @@ def emitir_com_pynfe(
         )
 
         resposta = comunicacao.autorizacao(
-            modelo="65",
+            modelo="nfce",
             nota_fiscal=xml_assinado,
             id_lote=1,
             ind_sinc=1
