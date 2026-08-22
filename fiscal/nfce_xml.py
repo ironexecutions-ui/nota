@@ -1599,38 +1599,24 @@ def gerar_xml_nfce(
 
     # ==========================================
     # INFORMAÇÕES SUPLEMENTARES NFC-e
+    # QR CODE VERSÃO 3
     # ==========================================
 
     log("Gerando informações suplementares NFC-e")
 
-    if not qr_code_url:
-
-        raise Exception(
-            "QR Code da NFC-e não foi informado. "
-            "Não é possível gerar NFC-e sem infNFeSupl."
-        )
-
-    qr_code_url = str(
-        qr_code_url
-    ).strip()
-
-    if not qr_code_url:
-
-        raise Exception(
-            "QR Code da NFC-e está vazio"
-        )
-
     # ==========================================
-    # URL DE CONSULTA POR CHAVE
+    # URLS OFICIAIS SEFAZ-SP
     # ==========================================
 
     if tp_amb == "2":
 
-        # HOMOLOGAÇÃO SP
+        # HOMOLOGAÇÃO
+        url_qrcode_base = (
+            "https://www.homologacao.nfce.fazenda.sp.gov.br/qrcode"
+        )
+
         url_chave = (
-            "https://www.homologacao.nfce.fazenda.sp.gov.br/"
-            "NFCeConsultaPublica/Paginas/"
-            "ConsultaPublica.aspx"
+            "https://www.homologacao.nfce.fazenda.sp.gov.br/consulta"
         )
 
         log(
@@ -1640,11 +1626,13 @@ def gerar_xml_nfce(
 
     else:
 
-        # PRODUÇÃO SP
+        # PRODUÇÃO
+        url_qrcode_base = (
+            "https://www.nfce.fazenda.sp.gov.br/qrcode"
+        )
+
         url_chave = (
-            "https://www.nfce.fazenda.sp.gov.br/"
-            "NFCeConsultaPublica/Paginas/"
-            "ConsultaPublica.aspx"
+            "https://www.nfce.fazenda.sp.gov.br/consulta"
         )
 
         log(
@@ -1653,8 +1641,51 @@ def gerar_xml_nfce(
         )
 
     # ==========================================
-    # VALIDA QR CODE
+    # QR CODE NFC-e VERSÃO 3
+    #
+    # EMISSÃO NORMAL / ONLINE:
+    #
+    # chave|3|tpAmb
+    #
+    # QR Code v3 não utiliza CSC na emissão
+    # normal online.
     # ==========================================
+
+    versao_qrcode = "3"
+
+    parametros_qrcode = (
+        f"{chave_acesso}"
+        f"|{versao_qrcode}"
+        f"|{tp_amb}"
+    )
+
+    qr_code_url = (
+        f"{url_qrcode_base}"
+        f"?p={parametros_qrcode}"
+    )
+
+    # ==========================================
+    # VALIDAÇÕES
+    # ==========================================
+
+    if len(chave_acesso) != 44:
+
+        raise Exception(
+            f"Chave inválida para QR Code NFC-e: "
+            f"{chave_acesso}"
+        )
+
+    if not chave_acesso.isdigit():
+
+        raise Exception(
+            "Chave da NFC-e possui caracteres inválidos"
+        )
+
+    if tp_amb not in ["1", "2"]:
+
+        raise Exception(
+            f"tpAmb inválido para QR Code: {tp_amb}"
+        )
 
     if not qr_code_url.startswith(
         ("http://", "https://")
@@ -1665,20 +1696,34 @@ def gerar_xml_nfce(
             f"{qr_code_url}"
         )
 
+    # ==========================================
+    # LOGS
+    # ==========================================
+
     log(
-        f"QR Code recebido: {qr_code_url}"
+        f"Versão QR Code: {versao_qrcode}"
     )
 
     log(
-        f"URL consulta chave: {url_chave}"
+        f"Parâmetros QR Code: "
+        f"{parametros_qrcode}"
+    )
+
+    log(
+        f"QR Code NFC-e v3: "
+        f"{qr_code_url}"
+    )
+
+    log(
+        f"URL consulta chave: "
+        f"{url_chave}"
     )
 
     # ==========================================
     # infNFeSupl
     #
-    # IMPORTANTE:
-    # Deve ficar como filho direto de <NFe>,
-    # depois de <infNFe>.
+    # Filho direto de <NFe>
+    # depois de <infNFe>
     # ==========================================
 
     infNFeSupl = criar_elemento(
@@ -1707,16 +1752,20 @@ def gerar_xml_nfce(
     )
 
     log(
-        "infNFeSupl gerado com sucesso"
+        "infNFeSupl QR Code v3 "
+        "gerado com sucesso"
     )
 
     log(
-        f"QR Code: {qr_code_url}"
+        f"QR Code final: "
+        f"{qr_code_url}"
     )
 
     log(
-        f"urlChave: {url_chave}"
+        f"urlChave final: "
+        f"{url_chave}"
     )
+
 
     # ==========================================
     # XML FINAL
