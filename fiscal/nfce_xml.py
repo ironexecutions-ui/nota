@@ -842,9 +842,24 @@ def gerar_xml_nfce(
             "prod"
         )
 
-        nome_produto = limpar_texto_xml(
-            item["nome"]
-        )
+# ==========================================
+# NOME DO PRODUTO
+# ==========================================
+
+        if tp_amb == "2" and idx == 1:
+            nome_produto = (
+                "NOTA FISCAL EMITIDA EM AMBIENTE DE "
+                "HOMOLOGACAO - SEM VALOR FISCAL"
+            )
+        
+            log(
+                "Ambiente de homologação, "
+                "xProd do primeiro item alterado conforme exigência da SEFAZ"
+            )
+        else:
+            nome_produto = limpar_texto_xml(
+                item["nome"]
+            )
 
         ncm = somente_numeros(
             item["ncm"]
