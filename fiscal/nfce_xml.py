@@ -125,9 +125,6 @@ def mapear_tpag(pagamento):
     )
 
 
-# ==========================================
-# ICMS
-# ==========================================
 def gerar_icms(
     imposto,
     item,
@@ -162,9 +159,16 @@ def gerar_icms(
     )
 
     # ==========================================
-    # SIMPLES NACIONAL
+    # SIMPLES NACIONAL / MEI
+    # CRT 1 = Simples Nacional
+    # CRT 4 = MEI
     # ==========================================
-    if crt == "1":
+    if crt in ["1", "4"]:
+
+        log(
+            f"Regime Simples/MEI detectado | "
+            f"CRT={crt}"
+        )
 
         # ==========================================
         # CSOSN 102 / 103 / 300 / 400
@@ -194,8 +198,9 @@ def gerar_icms(
             )
 
             log(
-                f"ICMSSN102 gerado "
-                f"com CSOSN {codigo}"
+                f"ICMSSN102 gerado | "
+                f"CRT={crt} | "
+                f"CSOSN={codigo}"
             )
 
             return
@@ -222,13 +227,17 @@ def gerar_icms(
                 codigo
             )
 
-            log("ICMSSN500 gerado")
+            log(
+                f"ICMSSN500 gerado | "
+                f"CRT={crt} | "
+                f"CSOSN={codigo}"
+            )
 
             return
 
         raise Exception(
             f"CSOSN {codigo} ainda não implementado "
-            f"para o produto {item.get('id')}"
+            f"para CRT {crt} no produto {item.get('id')}"
         )
 
     # ==========================================
@@ -238,6 +247,11 @@ def gerar_icms(
         "2",
         "3"
     ]:
+
+        log(
+            f"Regime normal detectado | "
+            f"CRT={crt}"
+        )
 
         # ==========================================
         # CST 00
@@ -285,6 +299,12 @@ def gerar_icms(
                 "0.00"
             )
 
+            log(
+                f"ICMS00 gerado | "
+                f"CRT={crt} | "
+                f"CST={codigo}"
+            )
+
             return
 
         # ==========================================
@@ -313,13 +333,22 @@ def gerar_icms(
                 codigo
             )
 
+            log(
+                f"ICMS40 gerado | "
+                f"CRT={crt} | "
+                f"CST={codigo}"
+            )
+
             return
 
         raise Exception(
             f"CST {codigo} ainda não implementado "
-            f"para o produto {item.get('id')}"
+            f"para CRT {crt} no produto {item.get('id')}"
         )
 
+    # ==========================================
+    # CRT NÃO SUPORTADO
+    # ==========================================
     raise Exception(
         f"CRT {crt} inválido ou não suportado"
     )
