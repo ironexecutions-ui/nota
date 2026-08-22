@@ -209,8 +209,14 @@ def emitir_com_pynfe(
         )
 
         # ==========================================
-        # 6. NORMALIZAR RETORNO
+        # 6. NORMALIZAR RETORNO REAL DA SEFAZ
         # ==========================================
+
+        log_pynfe(
+            f"Tipo retorno PyNFe: {type(resposta)}"
+        )
+
+        xml_retorno = None
 
         if isinstance(resposta, tuple):
 
@@ -218,36 +224,107 @@ def emitir_com_pynfe(
                 f"Retorno recebido como tuple com {len(resposta)} elementos"
             )
 
-            xml_retorno = None
+            # O PyNFe retorna normalmente:
+            #
+            # (
+            #     codigo,
+            #     requests.Response,
+            #     XML enviado
+            # )
+            #
+            # Portanto NÃO podemos usar simplesmente
+            # o primeiro etree._Element encontrado,
+            # pois ele é a própria NFC-e enviada.
+
+            response_http = None
 
             for parte in resposta:
 
-                if isinstance(parte, etree._Element):
-                    xml_retorno = parte
+                # identifica requests.Response sem
+                # precisar importar requests
+                if (
+                    hasattr(parte, "status_code")
+                    and hasattr(parte, "content")
+                ):
+                    response_http = parte
                     break
 
-                if isinstance(parte, bytes):
-
-                    try:
-                        xml_retorno = etree.fromstring(parte)
-                        break
-                    except Exception:
-                        pass
-
-                if isinstance(parte, str):
-
-                    try:
-                        xml_retorno = etree.fromstring(
-                            parte.encode("utf-8")
-                        )
-                        break
-                    except Exception:
-                        pass
-
-            if xml_retorno is None:
+            if response_http is None:
                 raise Exception(
-                    f"Não foi possível localizar XML no retorno PyNFe: {resposta}"
+                    "PyNFe não retornou objeto HTTP da SEFAZ"
                 )
+
+            log_pynfe(
+                f"HTTP SEFAZ: {response_http.status_code}"
+            )
+
+            log_pynfe(
+                f"Content-Type SEFAZ: "
+                f"{response_http.headers.get('Content-Type')}"
+            )
+
+            conteudo = response_http.content
+
+            if not conteudo:
+                raise Exception(
+                    "SEFAZ retornou resposta HTTP sem conteúdo"
+                )
+
+            log_pynfe(
+                f"Tamanho retorno SEFAZ: {len(conteudo)} bytes"
+            )
+
+            # Mostra o SOAP real recebido
+            try:
+                texto_debug = conteudo.decode(
+                    "utf-8",
+                    errors="replace"
+                )
+
+                log_pynfe("RESPOSTA HTTP BRUTA DA SEFAZ:")
+                print(texto_debug)
+
+            except Exception as erro_debug:
+                log_pynfe(
+                    f"Não foi possível imprimir resposta: {erro_debug}"
+                )
+
+            # Converte o SOAP/XML retornado
+            try:
+                raiz_http = etree.fromstring(conteudo)
+
+            except Exception as erro_xml:
+                raise Exception(
+                    f"Resposta da SEFAZ não é XML válido: {erro_xml}"
+                )
+
+            # Procura especificamente retEnviNFe
+            retorno_envi = raiz_http.xpath(
+                "//*[local-name()='retEnviNFe']"
+            )
+
+            if retorno_envi:
+                xml_retorno = retorno_envi[0]
+
+            else:
+
+                # Algumas respostas podem trazer retConsReciNFe,
+                # retConsSitNFe ou outro retorno fiscal.
+                candidatos = raiz_http.xpath(
+                    "//*["
+                    "local-name()='retEnviNFe' or "
+                    "local-name()='retConsReciNFe' or "
+                    "local-name()='retConsSitNFe' or "
+                    "local-name()='protNFe'"
+                    "]"
+                )
+
+                if candidatos:
+                    xml_retorno = candidatos[0]
+                else:
+                    # Mantém a raiz para conseguirmos
+                    # analisar mensagens SOAP/Fault
+                    xml_retorno = raiz_http
 
         elif isinstance(resposta, etree._Element):
 
@@ -268,9 +345,14 @@ def emitir_com_pynfe(
         else:
 
             raise Exception(
-                f"Retorno desconhecido do PyNFe: {type(resposta).__name__}"
+                f"Retorno desconhecido do PyNFe: "
+                f"{type(resposta).__name__}"
             )
 
+        if xml_retorno is None:
+            raise Exception(
+                "Não foi possível obter o XML de retorno da SEFAZ"
+            )
         # ==========================================
         # 7. DEBUG RETORNO SEFAZ
         # ==========================================
