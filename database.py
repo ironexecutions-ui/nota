@@ -1,77 +1,103 @@
+import os
 import mysql.connector
+from dotenv import load_dotenv
 
 # =========================
-# CONTROLE DE CONEXÃO
+# CARREGAR VARIÁVEIS .ENV
 # =========================
-USAR_ONLINE = True   # True = banco online | False = banco local
+
+load_dotenv()
 
 
 # =========================
-# CONFIGURAÇÕES
+# CONFIGURAÇÃO DO BANCO
 # =========================
-CONFIG_LOCAL = {
-    "host": "localhost",
-    "user": "root",
-    "password": "26374246",
-    "database": "ironexecutions",
-    "port": 3306
-}
 
-CONFIG_ONLINE = {
-    "host": "sql5.freesqldatabase.com",
-    "user": "sql5807683",
-    "password": "RKCTBqiFvy",
-    "database": "sql5807683",
-    "port": 3306
+CONFIG_BANCO = {
+    "host": os.getenv("DB_HOST", "127.0.0.1"),
+    "user": os.getenv("DB_USER"),
+    "password": os.getenv("DB_PASSWORD"),
+    "database": os.getenv("DB_NAME"),
+    "port": int(os.getenv("DB_PORT", "3306")),
 }
 
 
 # =========================
 # CONEXÃO CENTRAL
 # =========================
+
 def conectar():
-    config = CONFIG_ONLINE if USAR_ONLINE else CONFIG_LOCAL
-    return mysql.connector.connect(**config)
+    return mysql.connector.connect(**CONFIG_BANCO)
 
 
 # =========================
 # HELPERS
 # =========================
+
 def executar_select(query, params=None):
     conn = conectar()
     cursor = conn.cursor(dictionary=True)
 
-    cursor.execute(query, params or ())
-    dados = cursor.fetchall()
+    try:
+        cursor.execute(query, params or ())
+        return cursor.fetchall()
 
-    cursor.close()
-    conn.close()
-    return dados
+    finally:
+        cursor.close()
+        conn.close()
 
 
 def executar_comando(query, params=None):
     conn = conectar()
     cursor = conn.cursor()
 
-    cursor.execute(query, params or ())
-    conn.commit()
+    try:
+        cursor.execute(query, params or ())
+        conn.commit()
 
-    cursor.close()
-    conn.close()
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        cursor.close()
+        conn.close()
 
 
 def executar_insert(query, params=None):
     conn = conectar()
     cursor = conn.cursor()
 
-    cursor.execute(query, params or ())
-    conn.commit()
+    try:
+        cursor.execute(query, params or ())
+        conn.commit()
+        return cursor.lastrowid
 
-    row_id = cursor.lastrowid
+    except Exception:
+        conn.rollback()
+        raise
 
-    cursor.close()
-    conn.close()
-    return row_id
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def executar_update(query, params=None):
+    conn = conectar()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(query, params or ())
+        conn.commit()
+        return cursor.rowcount
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        cursor.close()
+        conn.close()
 
 
 def obter_comercio_id_do_cliente(cliente_id: int):
@@ -80,5 +106,7 @@ def obter_comercio_id_do_cliente(cliente_id: int):
         FROM clientes
         WHERE id = %s
     """
+
     res = executar_select(sql, (cliente_id,))
+
     return res[0]["comercio_id"] if res else None
