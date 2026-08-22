@@ -99,7 +99,7 @@ def validar_comercio_fiscal(fiscal):
 
     log(f"CRT RECEBIDO: [{crt}]")
 
-    if crt not in ["1", "2", "3"]:
+    if crt not in ["1", "2", "3", "4"]:
         raise Exception(
             "CRT inválido. Use 1 (Simples), 2 ou 3"
         )
