@@ -112,15 +112,26 @@ def emitir_nfce_manual(
                     p.id,
                     p.nome,
                     p.preco,
+            
                     f.ncm,
                     f.cfop,
                     f.origem,
-                    f.cst_csosn
+                    f.cst_csosn,
+            
+                    f.cst_ibscbs,
+                    f.cclass_trib,
+                    f.aliquota_ibs_uf,
+                    f.aliquota_ibs_mun,
+                    f.aliquota_cbs
+            
                 FROM produtos_servicos p
+            
                 INNER JOIN fiscal_dados_cupons f
                     ON f.produto_id = p.id
+            
                 WHERE p.id = %s
                   AND f.comercio_id = %s
+            
                 LIMIT 1
             """, (
                 int(produto_id),
