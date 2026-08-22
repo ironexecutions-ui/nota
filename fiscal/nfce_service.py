@@ -1,5 +1,4 @@
 from datetime import datetime
-import tempfile
 from zoneinfo import ZoneInfo
 import os
 
@@ -7,8 +6,7 @@ from fastapi import APIRouter, Header, HTTPException
 
 from database import conectar
 from .nfce_xml import gerar_xml_nfce
-from .nfce_assinatura import assinar_xml
-from .nfce_envio import enviar_nfce
+from .pynfe_service import emitir_com_pynfe
 from .nfce_validacoes import (
     validar_comercio_fiscal,
     validar_produto_fiscal
@@ -272,24 +270,19 @@ def emitir_nfce_manual(
         senha_real = "12345678"
 
         # ===============================
-        # ASSINAR XML
+        # ASSINAR + ENVIAR COM PyNFe
         # ===============================
-        xml_assinado = assinar_xml(
-            xml_base,
-            tmp_path,
-            senha_real
-        )
-
-        # ===============================
-        # ENVIAR NFC-e
-        # ===============================
-        retorno = enviar_nfce(
-            xml_assinado,
-            fiscal["ambiente_emissao"],
-            tmp_path,
-            senha_real,
-            fiscal,
-            total_nf
+        retorno = emitir_com_pynfe(
+            xml_base=xml_base,
+            certificado_path=tmp_path,
+            certificado_senha=senha_real,
+            uf=comercio["estado"],
+            homologacao=(
+                str(fiscal["ambiente_emissao"])
+                .strip()
+                .lower()
+                == "homologacao"
+            )
         )
 
         # ===============================
