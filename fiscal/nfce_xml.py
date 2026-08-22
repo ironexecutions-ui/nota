@@ -845,38 +845,6 @@ def gerar_xml_nfce(
 
     criar_elemento(
         ide,
-        "finNFe",
-        "1"
-    )
-
-    criar_elemento(
-        ide,
-        "indFinal",
-        "1"
-    )
-
-    criar_elemento(
-        ide,
-        "indPres",
-        "1"
-    )
-
-    criar_elemento(
-        ide,
-        "procEmi",
-        "0"
-    )
-
-    criar_elemento(
-        ide,
-        "verProc",
-        "IRON1.0"
-    )
-
-    log("Bloco ide concluído")
-
-    criar_elemento(
-        ide,
         "indFinal",
         "1"
     )
