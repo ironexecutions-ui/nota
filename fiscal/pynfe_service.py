@@ -128,7 +128,25 @@ def emitir_com_pynfe(
             )
 
         log_pynfe("XML assinado com sucesso")
-
+        # ==========================================
+        # SALVAR XML ASSINADO PARA DEBUG
+        # ==========================================
+        
+        DEBUG_XML_PATH = "/tmp/nfce_debug.xml"
+        
+        xml_debug_bytes = etree.tostring(
+            xml_assinado,
+            encoding="utf-8",
+            xml_declaration=True,
+            pretty_print=True
+        )
+        
+        with open(DEBUG_XML_PATH, "wb") as arquivo_debug:
+            arquivo_debug.write(xml_debug_bytes)
+        
+        log_pynfe(
+            f"XML assinado salvo para debug em: {DEBUG_XML_PATH}"
+        )
         # ==========================================
         # DEBUG DA ASSINATURA
         # ==========================================
