@@ -367,34 +367,78 @@ def emitir_com_pynfe(
         print(retorno_string)
 
         # ==========================================
-        # 8. STATUS
+        # 8. STATUS REAL DA NFC-e
         # ==========================================
 
-        cstat = _texto(
+        # Primeiro verifica o status geral do lote
+        cstat_lote = _texto(
             xml_retorno,
-            "//*[local-name()='cStat']"
+            "./*[local-name()='cStat']"
         )
 
-        motivo = _texto(
+        motivo_lote = _texto(
             xml_retorno,
-            "//*[local-name()='xMotivo']"
+            "./*[local-name()='xMotivo']"
         )
 
         log_pynfe(
-            f"cStat: {cstat}"
+            f"cStat lote: {cstat_lote}"
         )
 
         log_pynfe(
-            f"xMotivo: {motivo}"
+            f"xMotivo lote: {motivo_lote}"
         )
+
+        # ==========================================
+        # RESULTADO INDIVIDUAL DA NFC-e
+        # ==========================================
+
+        inf_prot = xml_retorno.xpath(
+            ".//*[local-name()='protNFe']"
+            "/*[local-name()='infProt']"
+        )
+
+        if inf_prot:
+
+            inf_prot = inf_prot[0]
+
+            cstat = _texto(
+                inf_prot,
+                "./*[local-name()='cStat']"
+            )
+
+            motivo = _texto(
+                inf_prot,
+                "./*[local-name()='xMotivo']"
+            )
+
+            log_pynfe(
+                f"cStat NFC-e: {cstat}"
+            )
+
+            log_pynfe(
+                f"xMotivo NFC-e: {motivo}"
+            )
+
+        else:
+
+            # Caso a SEFAZ rejeite antes de gerar protNFe,
+            # usamos o status geral da resposta.
+            cstat = cstat_lote
+            motivo = motivo_lote
+
+            log_pynfe(
+                "Resposta não contém protNFe"
+            )
 
         if not cstat:
             raise Exception(
                 "SEFAZ não retornou cStat"
             )
 
-        # 100 = autorizado
-        # 150 = autorizado fora do prazo
+        # ==========================================
+        # VERIFICAR AUTORIZAÇÃO
+        # ==========================================
 
         if str(cstat) not in ("100", "150"):
 
@@ -403,7 +447,6 @@ def emitir_com_pynfe(
                 f"cStat={cstat}, "
                 f"motivo={motivo}"
             )
-
         # ==========================================
         # 9. PROTOCOLO
         # ==========================================
