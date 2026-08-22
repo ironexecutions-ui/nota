@@ -1598,41 +1598,125 @@ def gerar_xml_nfce(
     )
 
     # ==========================================
-    # INFORMAÇÕES SUPLEMENTARES
+    # INFORMAÇÕES SUPLEMENTARES NFC-e
     # ==========================================
-    if qr_code_url:
+
+    log("Gerando informações suplementares NFC-e")
+
+    if not qr_code_url:
+
+        raise Exception(
+            "QR Code da NFC-e não foi informado. "
+            "Não é possível gerar NFC-e sem infNFeSupl."
+        )
+
+    qr_code_url = str(
+        qr_code_url
+    ).strip()
+
+    if not qr_code_url:
+
+        raise Exception(
+            "QR Code da NFC-e está vazio"
+        )
+
+    # ==========================================
+    # URL DE CONSULTA POR CHAVE
+    # ==========================================
+
+    if tp_amb == "2":
+
+        # HOMOLOGAÇÃO SP
+        url_chave = (
+            "https://www.homologacao.nfce.fazenda.sp.gov.br/"
+            "NFCeConsultaPublica/Paginas/"
+            "ConsultaPublica.aspx"
+        )
 
         log(
-            "Adicionando infNFeSupl"
-        )
-
-        infNFeSupl = criar_elemento(
-            nfe,
-            "infNFeSupl"
-        )
-
-        criar_elemento(
-            infNFeSupl,
-            "qrCode",
-            qr_code_url
-        )
-
-        criar_elemento(
-            infNFeSupl,
-            "urlChave",
-            (
-                "https://www.sistema.fazenda.sp.gov.br/"
-                "NFCeConsultaPublica/Paginas/"
-                "ConsultaPublica.aspx"
-            )
+            "Ambiente HOMOLOGAÇÃO detectado "
+            "para infNFeSupl"
         )
 
     else:
 
-        log(
-            "qr_code_url não informado. "
-            "infNFeSupl não será criado nesta etapa."
+        # PRODUÇÃO SP
+        url_chave = (
+            "https://www.nfce.fazenda.sp.gov.br/"
+            "NFCeConsultaPublica/Paginas/"
+            "ConsultaPublica.aspx"
         )
+
+        log(
+            "Ambiente PRODUÇÃO detectado "
+            "para infNFeSupl"
+        )
+
+    # ==========================================
+    # VALIDA QR CODE
+    # ==========================================
+
+    if not qr_code_url.startswith(
+        ("http://", "https://")
+    ):
+
+        raise Exception(
+            "URL do QR Code NFC-e inválida: "
+            f"{qr_code_url}"
+        )
+
+    log(
+        f"QR Code recebido: {qr_code_url}"
+    )
+
+    log(
+        f"URL consulta chave: {url_chave}"
+    )
+
+    # ==========================================
+    # infNFeSupl
+    #
+    # IMPORTANTE:
+    # Deve ficar como filho direto de <NFe>,
+    # depois de <infNFe>.
+    # ==========================================
+
+    infNFeSupl = criar_elemento(
+        nfe,
+        "infNFeSupl"
+    )
+
+    # ==========================================
+    # qrCode
+    # ==========================================
+
+    criar_elemento(
+        infNFeSupl,
+        "qrCode",
+        qr_code_url
+    )
+
+    # ==========================================
+    # urlChave
+    # ==========================================
+
+    criar_elemento(
+        infNFeSupl,
+        "urlChave",
+        url_chave
+    )
+
+    log(
+        "infNFeSupl gerado com sucesso"
+    )
+
+    log(
+        f"QR Code: {qr_code_url}"
+    )
+
+    log(
+        f"urlChave: {url_chave}"
+    )
 
     # ==========================================
     # XML FINAL
