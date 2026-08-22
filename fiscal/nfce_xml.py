@@ -1623,12 +1623,31 @@ def gerar_xml_nfce(
         "tPag",
         t_pag
     )
-
+    
     criar_elemento(
         detPag,
         "vPag",
         f"{total_produtos:.2f}"
     )
+    
+    # Cartão de crédito ou débito
+    if t_pag in ["03", "04"]:
+    
+        card = criar_elemento(
+            detPag,
+            "card"
+        )
+    
+        criar_elemento(
+            card,
+            "tpIntegra",
+            "2"
+        )
+    
+        log(
+            f"Dados de cartão adicionados | "
+            f"tPag={t_pag} | tpIntegra=2"
+        )
 
     # ==========================================
     # INFORMAÇÕES SUPLEMENTARES NFC-e
