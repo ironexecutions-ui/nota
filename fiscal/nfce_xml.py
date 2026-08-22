@@ -822,20 +822,26 @@ def gerar_xml_nfce(
         cDV
     )
 
-    tp_amb = (
-        "2"
-        if str(
-            fiscal["ambiente_emissao"]
-        ).strip().lower()
-        == "homologacao"
-        else "1"
+ambiente_emissao = str(
+    fiscal["ambiente_emissao"]
+).strip().lower()
+
+if ambiente_emissao == "homologacao":
+    tp_amb = "2"
+
+elif ambiente_emissao == "producao":
+    tp_amb = "1"
+
+else:
+    raise Exception(
+        f"Ambiente de emissão inválido: {ambiente_emissao}"
     )
 
-    criar_elemento(
-        ide,
-        "tpAmb",
-        tp_amb
-    )
+criar_elemento(
+    ide,
+    "tpAmb",
+    tp_amb
+)
 
     criar_elemento(
         ide,
