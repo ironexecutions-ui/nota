@@ -842,7 +842,11 @@ def gerar_xml_nfce(
         "tpAmb",
         tp_amb
     )
-
+    criar_elemento(
+        ide,
+        "finNFe",
+        "1"
+    )
     criar_elemento(
         ide,
         "indFinal",
