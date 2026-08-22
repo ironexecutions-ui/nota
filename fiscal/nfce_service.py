@@ -194,7 +194,57 @@ def gerar_qrcode_nfce(
 
     return qr_code_url
 
+def salvar_xml_nfce(
+    xml_conteudo,
+    comercio_id,
+    ambiente,
+    chave
+):
+    if not xml_conteudo:
+        raise Exception(
+            "XML autorizado não retornado pelo PyNFe"
+        )
 
+    agora = datetime.now(
+        ZoneInfo("America/Sao_Paulo")
+    )
+
+    pasta = os.path.join(
+        "/var/www/nota/xml",
+        str(comercio_id),
+        str(ambiente).strip().lower(),
+        agora.strftime("%Y"),
+        agora.strftime("%m")
+    )
+
+    os.makedirs(
+        pasta,
+        exist_ok=True
+    )
+
+    caminho_xml = os.path.join(
+        pasta,
+        f"{chave}.xml"
+    )
+
+    if isinstance(xml_conteudo, str):
+        xml_bytes = xml_conteudo.encode("utf-8")
+    else:
+        xml_bytes = xml_conteudo
+
+    with open(caminho_xml, "wb") as arquivo:
+        arquivo.write(xml_bytes)
+
+    if not os.path.exists(caminho_xml):
+        raise Exception(
+            "Falha ao salvar XML autorizado da NFC-e"
+        )
+
+    log(
+        f"XML autorizado salvo em: {caminho_xml}"
+    )
+
+    return caminho_xml
 # ==========================================================
 # EMITIR NFC-e
 # ==========================================================
@@ -718,9 +768,35 @@ def emitir_nfce_manual(
             retorno.get("qr_code")
             or qr_code_url
         )
+        # ==================================================
+        # 13. SALVAR XML AUTORIZADO
+        # ==================================================
 
+        xml_retorno = retorno.get(
+            "xml_retorno"
+        )
+
+        if not xml_retorno:
+            raise Exception(
+                "PyNFe não retornou XML autorizado"
+            )
+
+        xml_path = salvar_xml_nfce(
+            xml_conteudo=xml_retorno,
+            comercio_id=comercio["empresa"],
+            ambiente=fiscal["ambiente_emissao"],
+            chave=retorno["chave"]
+        )
+
+        log(
+            f"XML NFC-e armazenado em: {xml_path}"
+        )
         # ==================================================
         # 13. REGISTRAR NFC-e
+        # ==================================================
+
+        # ==================================================
+        # 14. REGISTRAR NFC-e
         # ==================================================
 
         cursor.execute(
@@ -732,15 +808,16 @@ def emitir_nfce_manual(
                 numero_nfce,
                 serie,
                 chave_acesso,
+                xml_path,
                 qr_code_url,
                 protocolo_autorizacao,
                 status,
                 ambiente,
                 criado_em
             )
-
             VALUES
             (
+                %s,
                 %s,
                 %s,
                 %s,
@@ -759,6 +836,7 @@ def emitir_nfce_manual(
                 numero_nfce,
                 fiscal["serie_nfce"],
                 retorno["chave"],
+                xml_path,
                 qr_code_retorno,
                 retorno["protocolo"],
                 "autorizada",
@@ -768,7 +846,7 @@ def emitir_nfce_manual(
         )
 
         # ==================================================
-        # 14. COMMIT
+        # 15. COMMIT
         # ==================================================
 
         conn.commit()
@@ -778,33 +856,19 @@ def emitir_nfce_manual(
         log(f"Número: {numero_nfce}")
         log(f"Chave: {retorno['chave']}")
         log(f"Protocolo: {retorno['protocolo']}")
+        log(f"XML: {xml_path}")
         log("========================================")
 
         return {
-
             "ok": True,
-
             "venda_id": venda_id,
-
             "numero_nfce": numero_nfce,
-
-            "chave": retorno[
-                "chave"
-            ],
-
-            "protocolo": retorno[
-                "protocolo"
-            ],
-
+            "chave": retorno["chave"],
+            "protocolo": retorno["protocolo"],
             "qr_code": qr_code_retorno,
-
-            "cstat": retorno.get(
-                "cstat"
-            ),
-
-            "motivo": retorno.get(
-                "motivo"
-            )
+            "xml_path": xml_path,
+            "cstat": retorno.get("cstat"),
+            "motivo": retorno.get("motivo")
         }
 
     except HTTPException:
