@@ -220,25 +220,23 @@ def validar_produto_fiscal(produto):
     log(
         f"Validando CST/CSOSN conforme CRT ({crt})"
     )
+if crt in ["1", "4"]:
 
-    if crt == "1":
+    # Simples Nacional / MEI → CSOSN
+    if len(cst_csosn) != 3:
 
-        # Simples Nacional → CSOSN
-        if len(cst_csosn) != 3:
+        raise Exception(
+            "CSOSN inválido para Simples Nacional/MEI"
+        )
 
-            raise Exception(
-                "CSOSN inválido para Simples Nacional"
-            )
+else:
 
-    else:
+    # Regime Normal → CST
+    if len(cst_csosn) != 2:
 
-        # Regime Normal → CST
-        if len(cst_csosn) != 2:
-
-            raise Exception(
-                "CST inválido para regime normal"
-            )
-
+        raise Exception(
+            "CST inválido para regime normal"
+        )
     # ===============================
     # PRODUTO x SERVIÇO
     # ===============================
