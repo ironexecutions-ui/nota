@@ -28,11 +28,15 @@ def _converter_xml(xml_base):
         )
 
     raise Exception(
-        f"Formato de XML não suportado: {type(xml_base).__name__}"
+        f"Formato de XML não suportado: "
+        f"{type(xml_base).__name__}"
     )
 
 
 def _texto(elemento, xpath):
+
+    if elemento is None:
+        return None
 
     resultado = elemento.xpath(
         xpath,
@@ -48,6 +52,138 @@ def _texto(elemento, xpath):
         return item.text
 
     return str(item)
+
+
+def _tem_retorno_sefaz(elemento):
+    """
+    Verifica se o elemento XML contém uma resposta
+    fiscal da SEFAZ.
+    """
+
+    if not isinstance(elemento, etree._Element):
+        return False
+
+    nomes_retorno = {
+        "retEnviNFe",
+        "retConsReciNFe",
+        "retConsSitNFe",
+        "protNFe",
+        "nfeProc"
+    }
+
+    nome_raiz = etree.QName(elemento).localname
+
+    if nome_raiz in nomes_retorno:
+        return True
+
+    candidatos = elemento.xpath(
+        ".//*["
+        "local-name()='retEnviNFe' or "
+        "local-name()='retConsReciNFe' or "
+        "local-name()='retConsSitNFe' or "
+        "local-name()='protNFe' or "
+        "local-name()='nfeProc'"
+        "]"
+    )
+
+    return bool(candidatos)
+
+
+def _normalizar_elemento_retorno(elemento):
+    """
+    Recebe qualquer estrutura XML retornada pelo PyNFe
+    e procura o ponto correto para leitura da resposta.
+    """
+
+    if not isinstance(elemento, etree._Element):
+        return None
+
+    nome_raiz = etree.QName(elemento).localname
+
+    log_pynfe(
+        f"Analisando XML de retorno. Raiz: {nome_raiz}"
+    )
+
+    # Caso normal da autorização
+    if nome_raiz == "retEnviNFe":
+        return elemento
+
+    # Algumas versões do PyNFe devolvem nfeProc
+    if nome_raiz == "nfeProc":
+        return elemento
+
+    # Protocolo isolado
+    if nome_raiz == "protNFe":
+        return elemento
+
+    # Outros retornos fiscais
+    if nome_raiz in (
+        "retConsReciNFe",
+        "retConsSitNFe"
+    ):
+        return elemento
+
+    # Procura retEnviNFe internamente
+    candidatos = elemento.xpath(
+        ".//*[local-name()='retEnviNFe']"
+    )
+
+    if candidatos:
+        return candidatos[0]
+
+    # Procura nfeProc
+    candidatos = elemento.xpath(
+        ".//*[local-name()='nfeProc']"
+    )
+
+    if candidatos:
+        return candidatos[0]
+
+    # Procura protocolo
+    candidatos = elemento.xpath(
+        ".//*[local-name()='protNFe']"
+    )
+
+    if candidatos:
+        return candidatos[0]
+
+    return None
+
+
+def _converter_parte_para_xml(parte):
+    """
+    Tenta converter uma parte retornada pelo PyNFe
+    para lxml Element.
+    """
+
+    if isinstance(parte, etree._Element):
+        return parte
+
+    if isinstance(parte, bytes):
+
+        if not parte.strip():
+            return None
+
+        try:
+            return etree.fromstring(parte)
+        except Exception:
+            return None
+
+    if isinstance(parte, str):
+
+        texto = parte.strip()
+
+        if not texto.startswith("<"):
+            return None
+
+        try:
+            return etree.fromstring(
+                texto.encode("utf-8")
+            )
+        except Exception:
+            return None
+
+    return None
 
 
 def emitir_com_pynfe(
@@ -86,9 +222,12 @@ def emitir_com_pynfe(
         uf = str(uf).strip().lower()
 
         log_pynfe(f"UF: {uf}")
+
         log_pynfe(
-            f"Ambiente: {'HOMOLOGAÇÃO' if homologacao else 'PRODUÇÃO'}"
+            f"Ambiente: "
+            f"{'HOMOLOGAÇÃO' if homologacao else 'PRODUÇÃO'}"
         )
+
         log_pynfe(
             f"Certificado: {certificado_path}"
         )
@@ -99,7 +238,9 @@ def emitir_com_pynfe(
 
         log_pynfe("Convertendo XML...")
 
-        xml_element = _converter_xml(xml_base)
+        xml_element = _converter_xml(
+            xml_base
+        )
 
         log_pynfe(
             f"Tag raiz recebida: {xml_element.tag}"
@@ -109,7 +250,9 @@ def emitir_com_pynfe(
         # 3. ASSINAR XML
         # ==========================================
 
-        log_pynfe("Carregando certificado A1...")
+        log_pynfe(
+            "Carregando certificado A1..."
+        )
 
         assinatura = AssinaturaA1(
             certificado_path,
@@ -127,28 +270,39 @@ def emitir_com_pynfe(
                 "PyNFe não retornou XML assinado"
             )
 
-        log_pynfe("XML assinado com sucesso")
+        log_pynfe(
+            "XML assinado com sucesso"
+        )
+
         # ==========================================
-        # SALVAR XML ASSINADO PARA DEBUG
+        # DEBUG XML ASSINADO
         # ==========================================
-        
+
         DEBUG_XML_PATH = "/tmp/nfce_debug.xml"
-        
+
         xml_debug_bytes = etree.tostring(
             xml_assinado,
             encoding="utf-8",
             xml_declaration=True,
             pretty_print=True
         )
-        
-        with open(DEBUG_XML_PATH, "wb") as arquivo_debug:
-            arquivo_debug.write(xml_debug_bytes)
-        
+
+        with open(
+            DEBUG_XML_PATH,
+            "wb"
+        ) as arquivo_debug:
+
+            arquivo_debug.write(
+                xml_debug_bytes
+            )
+
         log_pynfe(
-            f"XML assinado salvo para debug em: {DEBUG_XML_PATH}"
+            f"XML assinado salvo para debug em: "
+            f"{DEBUG_XML_PATH}"
         )
+
         # ==========================================
-        # DEBUG DA ASSINATURA
+        # VALIDAR SIGNATURE
         # ==========================================
 
         assinatura_xml = xml_assinado.xpath(
@@ -156,12 +310,16 @@ def emitir_com_pynfe(
         )
 
         if assinatura_xml:
+
             log_pynfe(
                 "Tag Signature encontrada no XML"
             )
+
         else:
+
             raise Exception(
-                "XML retornado pelo PyNFe não contém Signature"
+                "XML retornado pelo PyNFe "
+                "não contém Signature"
             )
 
         # ==========================================
@@ -180,7 +338,7 @@ def emitir_com_pynfe(
         )
 
         # ==========================================
-        # 5. AUTORIZAÇÃO NFC-e
+        # 5. AUTORIZAÇÃO
         # ==========================================
 
         log_pynfe(
@@ -193,172 +351,187 @@ def emitir_com_pynfe(
             id_lote=1,
             ind_sinc=1
         )
-        log_pynfe(f"Tipo retorno PyNFe: {type(resposta)}")
-        log_pynfe(f"RETORNO BRUTO PyNFe: {repr(resposta)}")
-        
-        if isinstance(resposta, tuple):
-            log_pynfe(f"Quantidade de elementos da tuple: {len(resposta)}")
-        
-            for indice, parte in enumerate(resposta):
-                log_pynfe(
-                    f"PARTE [{indice}] tipo={type(parte)}"
-                )
-        
-                try:
-                    if isinstance(parte, etree._Element):
-                        conteudo = etree.tostring(
-                            parte,
-                            encoding="unicode",
-                            pretty_print=True
-                        )
-                    else:
-                        conteudo = str(parte)
-        
-                    log_pynfe(
-                        f"PARTE [{indice}] conteúdo:\n{conteudo}"
-                    )
-        
-                except Exception as erro_debug:
-                    log_pynfe(
-                        f"Erro lendo PARTE [{indice}]: {erro_debug}"
-                    )
+
         log_pynfe(
             f"Tipo retorno PyNFe: {type(resposta)}"
         )
 
         # ==========================================
-        # 6. NORMALIZAR RETORNO REAL DA SEFAZ
+        # 6. NORMALIZAR RETORNO
         # ==========================================
-
-        log_pynfe(
-            f"Tipo retorno PyNFe: {type(resposta)}"
-        )
 
         xml_retorno = None
 
         if isinstance(resposta, tuple):
 
             log_pynfe(
-                f"Retorno recebido como tuple com {len(resposta)} elementos"
+                f"Retorno recebido como tuple "
+                f"com {len(resposta)} elementos"
             )
 
-            # O PyNFe retorna normalmente:
-            #
-            # (
-            #     codigo,
-            #     requests.Response,
-            #     XML enviado
-            # )
-            #
-            # Portanto NÃO podemos usar simplesmente
-            # o primeiro etree._Element encontrado,
-            # pois ele é a própria NFC-e enviada.
+            # --------------------------------------
+            # Primeiro procura XML válido diretamente
+            # dentro da tuple.
+            # --------------------------------------
 
-            response_http = None
+            for indice, parte in enumerate(resposta):
 
-            for parte in resposta:
-
-                # identifica requests.Response sem
-                # precisar importar requests
-                if (
-                    hasattr(parte, "status_code")
-                    and hasattr(parte, "content")
-                ):
-                    response_http = parte
-                    break
-
-            if response_http is None:
-                raise Exception(
-                    "PyNFe não retornou objeto HTTP da SEFAZ"
-                )
-
-            log_pynfe(
-                f"HTTP SEFAZ: {response_http.status_code}"
-            )
-
-            log_pynfe(
-                f"Content-Type SEFAZ: "
-                f"{response_http.headers.get('Content-Type')}"
-            )
-
-            conteudo = response_http.content
-
-            if not conteudo:
-                raise Exception(
-                    "SEFAZ retornou resposta HTTP sem conteúdo"
-                )
-
-            log_pynfe(
-                f"Tamanho retorno SEFAZ: {len(conteudo)} bytes"
-            )
-
-            # Mostra o SOAP real recebido
-            try:
-                texto_debug = conteudo.decode(
-                    "utf-8",
-                    errors="replace"
-                )
-
-                log_pynfe("RESPOSTA HTTP BRUTA DA SEFAZ:")
-                print(texto_debug)
-
-            except Exception as erro_debug:
                 log_pynfe(
-                    f"Não foi possível imprimir resposta: {erro_debug}"
+                    f"PARTE [{indice}] "
+                    f"tipo={type(parte)}"
                 )
 
-            # Converte o SOAP/XML retornado
-            try:
-                raiz_http = etree.fromstring(conteudo)
+                elemento_parte = (
+                    _converter_parte_para_xml(parte)
+                )
 
-            except Exception as erro_xml:
+                if elemento_parte is not None:
+
+                    nome = etree.QName(
+                        elemento_parte
+                    ).localname
+
+                    log_pynfe(
+                        f"PARTE [{indice}] XML "
+                        f"com raiz: {nome}"
+                    )
+
+                    if _tem_retorno_sefaz(
+                        elemento_parte
+                    ):
+
+                        candidato = (
+                            _normalizar_elemento_retorno(
+                                elemento_parte
+                            )
+                        )
+
+                        if candidato is not None:
+
+                            xml_retorno = candidato
+
+                            log_pynfe(
+                                f"Resposta SEFAZ encontrada "
+                                f"na PARTE [{indice}]"
+                            )
+
+                            break
+
+            # --------------------------------------
+            # Se não achou XML direto, procura
+            # requests.Response dentro da tuple.
+            # --------------------------------------
+
+            if xml_retorno is None:
+
+                response_http = None
+
+                for parte in resposta:
+
+                    if (
+                        hasattr(parte, "status_code")
+                        and hasattr(parte, "content")
+                    ):
+
+                        response_http = parte
+                        break
+
+                if response_http is not None:
+
+                    log_pynfe(
+                        f"HTTP SEFAZ: "
+                        f"{response_http.status_code}"
+                    )
+
+                    conteudo = (
+                        response_http.content
+                    )
+
+                    if not conteudo:
+                        raise Exception(
+                            "SEFAZ retornou resposta "
+                            "HTTP sem conteúdo"
+                        )
+
+                    try:
+
+                        raiz_http = etree.fromstring(
+                            conteudo
+                        )
+
+                    except Exception as erro_xml:
+
+                        raise Exception(
+                            "Resposta da SEFAZ não é "
+                            f"XML válido: {erro_xml}"
+                        )
+
+                    xml_retorno = (
+                        _normalizar_elemento_retorno(
+                            raiz_http
+                        )
+                    )
+
+                    if xml_retorno is None:
+                        xml_retorno = raiz_http
+
+            if xml_retorno is None:
+
                 raise Exception(
-                    f"Resposta da SEFAZ não é XML válido: {erro_xml}"
+                    "Não foi possível localizar "
+                    "o XML de resposta da SEFAZ "
+                    "dentro do retorno do PyNFe"
                 )
 
-            # Procura especificamente retEnviNFe
-            retorno_envi = raiz_http.xpath(
-                "//*[local-name()='retEnviNFe']"
+        elif isinstance(
+            resposta,
+            etree._Element
+        ):
+
+            xml_retorno = (
+                _normalizar_elemento_retorno(
+                    resposta
+                )
             )
 
-            if retorno_envi:
-                xml_retorno = retorno_envi[0]
+            if xml_retorno is None:
+                xml_retorno = resposta
 
-            else:
+        elif isinstance(
+            resposta,
+            bytes
+        ):
 
-                # Algumas respostas podem trazer retConsReciNFe,
-                # retConsSitNFe ou outro retorno fiscal.
-                candidatos = raiz_http.xpath(
-                    "//*["
-                    "local-name()='retEnviNFe' or "
-                    "local-name()='retConsReciNFe' or "
-                    "local-name()='retConsSitNFe' or "
-                    "local-name()='protNFe'"
-                    "]"
-                )
-
-                if candidatos:
-                    xml_retorno = candidatos[0]
-                else:
-                    # Mantém a raiz para conseguirmos
-                    # analisar mensagens SOAP/Fault
-                    xml_retorno = raiz_http
-
-        elif isinstance(resposta, etree._Element):
-
-            xml_retorno = resposta
-
-        elif isinstance(resposta, bytes):
-
-            xml_retorno = etree.fromstring(
+            raiz = etree.fromstring(
                 resposta
             )
 
-        elif isinstance(resposta, str):
+            xml_retorno = (
+                _normalizar_elemento_retorno(
+                    raiz
+                )
+            )
 
-            xml_retorno = etree.fromstring(
+            if xml_retorno is None:
+                xml_retorno = raiz
+
+        elif isinstance(
+            resposta,
+            str
+        ):
+
+            raiz = etree.fromstring(
                 resposta.encode("utf-8")
             )
+
+            xml_retorno = (
+                _normalizar_elemento_retorno(
+                    raiz
+                )
+            )
+
+            if xml_retorno is None:
+                xml_retorno = raiz
 
         else:
 
@@ -368,11 +541,14 @@ def emitir_com_pynfe(
             )
 
         if xml_retorno is None:
+
             raise Exception(
-                "Não foi possível obter o XML de retorno da SEFAZ"
+                "Não foi possível obter "
+                "o XML de retorno da SEFAZ"
             )
+
         # ==========================================
-        # 7. DEBUG RETORNO SEFAZ
+        # 7. DEBUG RETORNO
         # ==========================================
 
         retorno_string = etree.tostring(
@@ -381,14 +557,25 @@ def emitir_com_pynfe(
             pretty_print=True
         )
 
-        log_pynfe("RETORNO SEFAZ:")
+        log_pynfe(
+            "RETORNO NORMALIZADO SEFAZ:"
+        )
+
         print(retorno_string)
 
         # ==========================================
-        # 8. STATUS REAL DA NFC-e
+        # 8. STATUS
         # ==========================================
 
-        # Primeiro verifica o status geral do lote
+        nome_retorno = etree.QName(
+            xml_retorno
+        ).localname
+
+        log_pynfe(
+            f"Raiz utilizada para análise: "
+            f"{nome_retorno}"
+        )
+
         cstat_lote = _texto(
             xml_retorno,
             "./*[local-name()='cStat']"
@@ -408,17 +595,28 @@ def emitir_com_pynfe(
         )
 
         # ==========================================
-        # RESULTADO INDIVIDUAL DA NFC-e
+        # PROCURAR infProt
         # ==========================================
 
-        inf_prot = xml_retorno.xpath(
-            ".//*[local-name()='protNFe']"
-            "/*[local-name()='infProt']"
+        inf_prot_lista = xml_retorno.xpath(
+            ".//*[local-name()='infProt']"
         )
 
-        if inf_prot:
+        # Caso a própria raiz seja infProt
+        if (
+            etree.QName(
+                xml_retorno
+            ).localname
+            == "infProt"
+        ):
 
-            inf_prot = inf_prot[0]
+            inf_prot_lista = [
+                xml_retorno
+            ]
+
+        if inf_prot_lista:
+
+            inf_prot = inf_prot_lista[0]
 
             cstat = _texto(
                 inf_prot,
@@ -440,33 +638,36 @@ def emitir_com_pynfe(
 
         else:
 
-            # Caso a SEFAZ rejeite antes de gerar protNFe,
-            # usamos o status geral da resposta.
             cstat = cstat_lote
             motivo = motivo_lote
 
             log_pynfe(
-                "Resposta não contém protNFe"
+                "Resposta não contém infProt"
             )
 
         if not cstat:
+
             raise Exception(
                 "SEFAZ não retornou cStat"
             )
 
         # ==========================================
-        # VERIFICAR AUTORIZAÇÃO
+        # 9. VERIFICAR AUTORIZAÇÃO
         # ==========================================
 
-        if str(cstat) not in ("100", "150"):
+        if str(cstat) not in (
+            "100",
+            "150"
+        ):
 
             raise Exception(
                 f"SEFAZ rejeitou NFC-e. "
                 f"cStat={cstat}, "
                 f"motivo={motivo}"
             )
+
         # ==========================================
-        # 9. PROTOCOLO
+        # 10. PROTOCOLO
         # ==========================================
 
         protocolo = _texto(
@@ -480,13 +681,17 @@ def emitir_com_pynfe(
         )
 
         if not protocolo:
+
             raise Exception(
-                "NFC-e autorizada mas protocolo não foi retornado"
+                "NFC-e autorizada mas protocolo "
+                "não foi retornado"
             )
 
-        if not chave:
+        # ==========================================
+        # CHAVE DO XML ASSINADO COMO FALLBACK
+        # ==========================================
 
-            # tenta pegar a chave do próprio XML enviado
+        if not chave:
 
             inf_nfe = xml_assinado.xpath(
                 "//*[local-name()='infNFe']"
@@ -494,25 +699,27 @@ def emitir_com_pynfe(
 
             if inf_nfe:
 
-                id_nfe = inf_nfe[0].get("Id")
+                id_nfe = inf_nfe[0].get(
+                    "Id"
+                )
 
-                if id_nfe and id_nfe.startswith("NFe"):
+                if (
+                    id_nfe
+                    and id_nfe.startswith("NFe")
+                ):
+
                     chave = id_nfe[3:]
 
         if not chave:
+
             raise Exception(
-                "Não foi possível identificar a chave da NFC-e"
+                "Não foi possível identificar "
+                "a chave da NFC-e"
             )
 
         # ==========================================
-        # 10. QR CODE
+        # 11. QR CODE
         # ==========================================
-        #
-        # O QR Code não é criado aqui artificialmente.
-        #
-        # O XML gerado pelo nosso nfce_xml.py deve
-        # conter infNFeSupl/qrCode quando aplicável.
-        #
 
         qr_code = _texto(
             xml_assinado,
@@ -531,9 +738,17 @@ def emitir_com_pynfe(
             f"QR Code: {qr_code}"
         )
 
-        log_pynfe("========================================")
-        log_pynfe("NFC-e AUTORIZADA")
-        log_pynfe("========================================")
+        log_pynfe(
+            "========================================"
+        )
+
+        log_pynfe(
+            "NFC-e AUTORIZADA"
+        )
+
+        log_pynfe(
+            "========================================"
+        )
 
         return {
             "ok": True,
@@ -552,9 +767,20 @@ def emitir_com_pynfe(
 
     except Exception as e:
 
-        log_pynfe("========================================")
-        log_pynfe("ERRO NA EMISSÃO")
-        log_pynfe(str(e))
-        log_pynfe("========================================")
+        log_pynfe(
+            "========================================"
+        )
+
+        log_pynfe(
+            "ERRO NA EMISSÃO"
+        )
+
+        log_pynfe(
+            str(e)
+        )
+
+        log_pynfe(
+            "========================================"
+        )
 
         raise
