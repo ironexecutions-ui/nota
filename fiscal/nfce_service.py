@@ -668,44 +668,115 @@ def emitir_nfce_manual(
         )
 
         # ==================================================
-        # 10. CERTIFICADO
+        # 10. CERTIFICADO DO COMÉRCIO
         # ==================================================
 
-        if comercio["empresa"] != 25:
+        log(
+            f"Carregando certificado do comércio "
+            f"{comercio['empresa']}"
+        )
+
+        # ==================================================
+        # PEGAR DADOS DO BANCO
+        # ==================================================
+
+        certificado_path = str(
+            fiscal.get("certificado_path") or ""
+        ).strip()
+
+        certificado_senha_enc = str(
+            fiscal.get("certificado_senha_enc") or ""
+        ).strip()
+
+        # ==================================================
+        # VALIDAR DADOS
+        # ==================================================
+
+        if not certificado_path:
 
             raise Exception(
-                "Certificado não configurado "
-                "para este comércio"
+                "Certificado digital não configurado "
+                f"para o comércio {comercio['empresa']}"
             )
 
-        BASE_DIR = os.path.dirname(
-            os.path.abspath(__file__)
+        if not certificado_senha_enc:
+
+            raise Exception(
+                "Senha do certificado não configurada "
+                f"para o comércio {comercio['empresa']}"
+            )
+
+        log(
+            f"Certificado encontrado no banco: "
+            f"{certificado_path}"
         )
 
-        tmp_path = os.path.join(
-            BASE_DIR,
-            "certificado",
-            "enya.pfx"
+        # ==================================================
+        # SENHA DO CERTIFICADO
+        # ==================================================
+        
+        senha_real = certificado_senha_enc
+        
+        log(
+            "Senha do certificado carregada com sucesso"
         )
+
+        # ==================================================
+        # LOCALIZAR ARQUIVO PFX
+        # ==================================================
+
+        nome_certificado = (
+            certificado_path
+            .split("?")[0]
+            .rstrip("/")
+            .split("/")[-1]
+        )
+
+        if not nome_certificado:
+
+            raise Exception(
+                "Nome do certificado não encontrado"
+            )
+
+        if not nome_certificado.lower().endswith(".pfx"):
+
+            raise Exception(
+                "O certificado configurado não é um arquivo PFX"
+            )
 
         tmp_path = os.path.abspath(
-            tmp_path
+            os.path.join(
+                "/var/www/iron-storage",
+                nome_certificado
+            )
         )
 
         log(
-            f"Certificado localizado em: {tmp_path}"
+            f"Certificado físico: {tmp_path}"
         )
 
-        if not os.path.exists(
-            tmp_path
-        ):
+        # ==================================================
+        # VALIDAR ARQUIVO
+        # ==================================================
+
+        if not os.path.exists(tmp_path):
 
             raise Exception(
-                "Arquivo do certificado "
-                "não encontrado"
+                "Arquivo do certificado não encontrado "
+                f"no servidor: {tmp_path}"
             )
 
-        senha_real = "12345678"
+        if not os.path.isfile(tmp_path):
+
+            raise Exception(
+                "O certificado configurado não é "
+                "um arquivo válido"
+            )
+
+        log(
+            f"Certificado do comércio "
+            f"{comercio['empresa']} carregado com sucesso"
+        )
 
         # ==================================================
         # 11. ASSINAR + ENVIAR
@@ -714,6 +785,7 @@ def emitir_nfce_manual(
         log(
             "Enviando XML para PyNFe..."
         )
+
 
         retorno = emitir_com_pynfe(
 
