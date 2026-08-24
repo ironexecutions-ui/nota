@@ -752,7 +752,6 @@ def emitir_nfce_manual(
             f"Itens por peso: "
             f"{quantidade_peso}"
         )
-
         # ==================================================
         # 3. VALIDAR PRODUTOS
         # ==================================================
@@ -766,19 +765,14 @@ def emitir_nfce_manual(
         # ==================================================
         # TOTAL DA NFC-e
         #
-        # Agora NÃO usamos mais:
-        #
-        # quantidade * preco
-        #
-        # porque isso seria errado para produtos por peso.
+        # Produto normal usa o total calculado normalmente.
+        # Produto por peso usa exatamente o valor cobrado.
         # ==================================================
 
         total_nf = round(
             sum(
                 float(
-                    item[
-                        "valor_total_fiscal"
-                    ]
+                    item["valor_total_fiscal"]
                 )
                 for item in itens
             ),
@@ -794,30 +788,11 @@ def emitir_nfce_manual(
             f"Valor pago da venda: "
             f"{float(dados.get('valor_pago') or 0):.2f}"
         )
-        # ==================================================
-        # 3. VALIDAR PRODUTOS
-        # ==================================================
-
-        for item in itens:
-
-            validar_produto_fiscal(
-                item
-            )
-
-        total_nf = sum(
-            item["quantidade"]
-            * item["preco"]
-
-            for item in itens
-        )
-
-        log(
-            f"Total calculado NFC-e: {total_nf}"
-        )
 
         # ==================================================
         # 4. NUMERAÇÃO
         # ==================================================
+
 
         cursor.execute(
             """
