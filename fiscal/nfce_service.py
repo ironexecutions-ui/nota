@@ -337,54 +337,33 @@ def emitir_nfce_manual(
 
         # ==================================================
         # 2. ITENS
+        # PRODUTOS NORMAIS + PRODUTOS POR PESO
         # ==================================================
 
-        produtos_txt = dados.get(
-            "produtos"
+        produtos_txt = dados.get("produtos")
+        produtos_peso_txt = dados.get("produtos_peso")
+
+        log(
+            f"Produtos normais RAW da venda: "
+            f"{produtos_txt}"
         )
 
         log(
-            f"Produtos RAW da venda: {produtos_txt}"
+            f"Produtos por peso RAW da venda: "
+            f"{produtos_peso_txt}"
         )
-
-        if not produtos_txt:
-
-            raise Exception(
-                "Venda sem produtos"
-            )
 
         itens = []
 
-        lista_produtos = (
-            produtos_txt.split(",")
-        )
+        # ==================================================
+        # FUNÇÃO INTERNA PARA BUSCAR DADOS FISCAIS
+        # ==================================================
 
-        for item_txt in lista_produtos:
-
-            try:
-
-                produto_id, quantidade = (
-                    item_txt.split(":")
-                )
-
-            except Exception:
-
-                log(
-                    f"Formato inválido do item: {item_txt}"
-                )
-
-                continue
-
-            produto_id = int(
-                produto_id.strip()
-            )
-
-            quantidade = int(
-                quantidade.strip()
-            )
+        def buscar_produto_fiscal(produto_id):
 
             log(
-                f"Buscando produto {produto_id}"
+                f"Buscando dados fiscais do produto "
+                f"{produto_id}"
             )
 
             cursor.execute(
@@ -394,7 +373,10 @@ def emitir_nfce_manual(
                     p.id,
                     p.nome,
                     p.preco,
+                    p.peso,
+                    p.unidade,
 
+                    f.tipo,
                     f.ncm,
                     f.cfop,
                     f.origem,
@@ -426,33 +408,313 @@ def emitir_nfce_manual(
 
             if not produto:
 
-                log(
-                    f"PRODUTO SEM DADOS FISCAIS: {produto_id}"
+                raise Exception(
+                    f"Produto {produto_id} "
+                    f"sem dados fiscais cadastrados"
                 )
-
-                continue
-
-            produto["quantidade"] = (
-                quantidade
-            )
 
             produto["crt"] = str(
                 fiscal["crt"]
             ).strip()
 
-            log(
-                f"CRT INJETADO NO PRODUTO: "
-                f"{produto['crt']}"
+            return produto
+
+        # ==================================================
+        # 2.1 PRODUTOS NORMAIS
+        # ==================================================
+
+        if produtos_txt:
+
+            lista_produtos = (
+                produtos_txt.split(",")
             )
 
-            log(
-                f"Produto fiscal encontrado: "
-                f"{produto['nome']}"
+            for item_txt in lista_produtos:
+
+                item_txt = (
+                    str(item_txt)
+                    .strip()
+                )
+
+                if not item_txt:
+                    continue
+
+                try:
+
+                    produto_id_txt, quantidade_txt = (
+                        item_txt.split(":", 1)
+                    )
+
+                    produto_id = int(
+                        produto_id_txt.strip()
+                    )
+
+                    quantidade = float(
+                        quantidade_txt.strip()
+                    )
+
+                except Exception:
+
+                    log(
+                        f"Formato inválido de produto "
+                        f"normal: {item_txt}"
+                    )
+
+                    continue
+
+                if quantidade <= 0:
+
+                    log(
+                        f"Quantidade inválida do produto "
+                        f"{produto_id}: {quantidade}"
+                    )
+
+                    continue
+
+                produto = buscar_produto_fiscal(
+                    produto_id
+                )
+
+                # ==========================================
+                # IMPORTANTE
+                #
+                # O campo "produtos" também contém o
+                # produto por peso com quantidade 1.
+                #
+                # Como produtos_peso contém a informação
+                # real desse item, ele NÃO pode entrar
+                # novamente como produto normal.
+                # ==========================================
+
+                produto_esta_em_peso = False
+
+                if produtos_peso_txt:
+
+                    for peso_txt in (
+                        produtos_peso_txt.split(",")
+                    ):
+
+                        try:
+
+                            peso_id = int(
+                                peso_txt
+                                .split(":", 1)[0]
+                                .strip()
+                            )
+
+                            if peso_id == produto_id:
+                                produto_esta_em_peso = True
+                                break
+
+                        except Exception:
+                            continue
+
+                if produto_esta_em_peso:
+
+                    log(
+                        f"Produto {produto_id} está em "
+                        f"produtos_peso. Ignorando versão "
+                        f"normal para evitar duplicidade."
+                    )
+
+                    continue
+
+                produto["quantidade"] = quantidade
+
+                produto["eh_produto_peso"] = False
+
+                produto["unidade_fiscal"] = (
+                    str(
+                        produto.get("unidade")
+                        or "UN"
+                    )
+                    .strip()
+                    .upper()
+                )
+
+                produto["valor_unitario_fiscal"] = float(
+                    produto["preco"]
+                )
+
+                produto["valor_total_fiscal"] = round(
+                    quantidade
+                    * float(produto["preco"]),
+                    2
+                )
+
+                log(
+                    f"PRODUTO NORMAL | "
+                    f"ID={produto_id} | "
+                    f"Nome={produto['nome']} | "
+                    f"Qtd={quantidade} | "
+                    f"Preço={produto['preco']} | "
+                    f"Total={produto['valor_total_fiscal']}"
+                )
+
+                itens.append(
+                    produto
+                )
+
+        # ==================================================
+        # 2.2 PRODUTOS POR PESO
+        #
+        # Formato salvo:
+        #
+        # produto_id:gramas:valor_cobrado
+        #
+        # Exemplo:
+        #
+        # 15:350:4.20
+        #
+        # Para NFC-e vamos trabalhar em KG.
+        #
+        # 350g = 0.3500 KG
+        #
+        # O preço unitário fiscal é calculado para que:
+        #
+        # qCom * vUnCom = valor realmente cobrado
+        # ==================================================
+
+        if produtos_peso_txt:
+
+            lista_produtos_peso = (
+                produtos_peso_txt.split(",")
             )
 
-            itens.append(
-                produto
-            )
+            for item_txt in lista_produtos_peso:
+
+                item_txt = (
+                    str(item_txt)
+                    .strip()
+                )
+
+                if not item_txt:
+                    continue
+
+                try:
+
+                    partes = item_txt.split(":")
+
+                    if len(partes) != 3:
+
+                        raise ValueError(
+                            "Produto por peso deve possuir "
+                            "id:gramas:valor"
+                        )
+
+                    produto_id = int(
+                        partes[0].strip()
+                    )
+
+                    gramas = float(
+                        partes[1].strip()
+                    )
+
+                    valor_cobrado = float(
+                        partes[2].strip()
+                    )
+
+                except Exception as erro:
+
+                    log(
+                        f"Formato inválido de produto "
+                        f"por peso: {item_txt} | "
+                        f"Erro: {erro}"
+                    )
+
+                    continue
+
+                if gramas <= 0:
+
+                    log(
+                        f"Peso inválido no produto "
+                        f"{produto_id}: {gramas}g"
+                    )
+
+                    continue
+
+                if valor_cobrado < 0:
+
+                    log(
+                        f"Valor inválido no produto "
+                        f"{produto_id}: "
+                        f"R$ {valor_cobrado}"
+                    )
+
+                    continue
+
+                produto = buscar_produto_fiscal(
+                    produto_id
+                )
+
+                # ==========================================
+                # CONVERTER GRAMAS PARA KG
+                # ==========================================
+
+                quantidade_kg = (
+                    gramas / 1000
+                )
+
+                if quantidade_kg <= 0:
+
+                    raise Exception(
+                        f"Quantidade em KG inválida "
+                        f"para produto {produto_id}"
+                    )
+
+                # ==========================================
+                # PREÇO POR KG DAQUELA VENDA
+                #
+                # Usamos o valor efetivamente cobrado.
+                #
+                # Exemplo:
+                #
+                # 350g
+                # R$ 4,20
+                #
+                # 0.350 KG
+                # R$ 12,00/KG
+                # ==========================================
+
+                valor_unitario_kg = (
+                    valor_cobrado
+                    / quantidade_kg
+                )
+
+                produto["eh_produto_peso"] = True
+
+                produto["gramas"] = gramas
+
+                produto["quantidade"] = quantidade_kg
+
+                produto["unidade_fiscal"] = "KG"
+
+                produto["valor_unitario_fiscal"] = (
+                    valor_unitario_kg
+                )
+
+                produto["valor_total_fiscal"] = round(
+                    valor_cobrado,
+                    2
+                )
+
+                log(
+                    f"PRODUTO POR PESO | "
+                    f"ID={produto_id} | "
+                    f"Nome={produto['nome']} | "
+                    f"Peso={gramas}g | "
+                    f"qCom={quantidade_kg:.4f} KG | "
+                    f"vUnCom={valor_unitario_kg:.10f} | "
+                    f"vProd={valor_cobrado:.2f}"
+                )
+
+                itens.append(
+                    produto
+                )
+
+        # ==================================================
+        # GARANTIR QUE EXISTEM ITENS
+        # ==================================================
 
         if not itens:
 
@@ -461,9 +723,77 @@ def emitir_nfce_manual(
             )
 
         log(
-            f"Quantidade de itens fiscais: {len(itens)}"
+            f"Quantidade de itens fiscais: "
+            f"{len(itens)}"
         )
 
+        quantidade_normais = sum(
+            1
+            for item in itens
+            if not item.get(
+                "eh_produto_peso"
+            )
+        )
+
+        quantidade_peso = sum(
+            1
+            for item in itens
+            if item.get(
+                "eh_produto_peso"
+            )
+        )
+
+        log(
+            f"Itens normais: "
+            f"{quantidade_normais}"
+        )
+
+        log(
+            f"Itens por peso: "
+            f"{quantidade_peso}"
+        )
+
+        # ==================================================
+        # 3. VALIDAR PRODUTOS
+        # ==================================================
+
+        for item in itens:
+
+            validar_produto_fiscal(
+                item
+            )
+
+        # ==================================================
+        # TOTAL DA NFC-e
+        #
+        # Agora NÃO usamos mais:
+        #
+        # quantidade * preco
+        #
+        # porque isso seria errado para produtos por peso.
+        # ==================================================
+
+        total_nf = round(
+            sum(
+                float(
+                    item[
+                        "valor_total_fiscal"
+                    ]
+                )
+                for item in itens
+            ),
+            2
+        )
+
+        log(
+            f"Total calculado NFC-e: "
+            f"{total_nf:.2f}"
+        )
+
+        log(
+            f"Valor pago da venda: "
+            f"{float(dados.get('valor_pago') or 0):.2f}"
+        )
         # ==================================================
         # 3. VALIDAR PRODUTOS
         # ==================================================
