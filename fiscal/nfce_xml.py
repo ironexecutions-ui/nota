@@ -1116,24 +1116,23 @@ def gerar_xml_nfce(
         cst_csosn = somente_numeros(
             item["cst_csosn"]
         )
-
         quantidade = float(
-            item["quantidade"]
+            item.get("quantidade") or 0
         )
-
-        preco = float(
-            item.get(
-                "valor_unitario_fiscal",
-                item["preco"]
-            )
-        )
-
-        valor_total_item = float(
-            item.get(
-                "valor_total_fiscal",
-                quantidade * preco
-            )
-        )
+        
+        valor_unitario_fiscal = item.get("valor_unitario_fiscal")
+        
+        if valor_unitario_fiscal is not None:
+            preco = float(valor_unitario_fiscal)
+        else:
+            preco = float(item.get("preco") or 0)
+        
+        valor_total_fiscal = item.get("valor_total_fiscal")
+        
+        if valor_total_fiscal is not None:
+            valor_total_item = float(valor_total_fiscal)
+        else:
+            valor_total_item = quantidade * preco
 
         unidade_fiscal = (
             str(
