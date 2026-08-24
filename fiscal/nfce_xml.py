@@ -397,6 +397,9 @@ def gerar_ibscbs(
             f"{item.get('id')}: {cclass_trib}"
         )
 
+    # ==========================================
+    # ALÍQUOTAS NOMINAIS
+    # ==========================================
     aliquota_ibs_uf = float(
         item.get("aliquota_ibs_uf") or 0
     )
@@ -409,20 +412,89 @@ def gerar_ibscbs(
         item.get("aliquota_cbs") or 0
     )
 
-    # Base de cálculo
+    # ==========================================
+    # BASE DE CÁLCULO
+    # ==========================================
     valor_bc = round(
         float(valor_produto),
         2
     )
 
-    # Valores calculados
+    # ==========================================
+    # REDUÇÃO DE ALÍQUOTA
+    #
+    # CST 200 = alíquota reduzida
+    #
+    # cClassTrib 200014:
+    # frutas, hortícolas e ovos do Anexo XV
+    # redução de 100%
+    # ==========================================
+    reducao_ibs_uf = 0.0
+    reducao_ibs_mun = 0.0
+    reducao_cbs = 0.0
+
+    if cst == "200":
+
+        if cclass_trib == "200014":
+            reducao_ibs_uf = 100.0
+            reducao_ibs_mun = 100.0
+            reducao_cbs = 100.0
+
+            log(
+                f"Produto {item.get('id')} com "
+                f"cClassTrib 200014 | "
+                f"redução IBS/CBS = 100%"
+            )
+
+        else:
+            raise Exception(
+                f"CST IBS/CBS 200 exige percentual "
+                f"de redução configurado. "
+                f"cClassTrib ainda não implementado: "
+                f"{cclass_trib}"
+            )
+
+    # ==========================================
+    # ALÍQUOTAS EFETIVAS
+    #
+    # pAliqEfet =
+    # alíquota nominal * (1 - redução / 100)
+    # ==========================================
+    aliquota_efetiva_ibs_uf = round(
+        aliquota_ibs_uf
+        * (1 - reducao_ibs_uf / 100),
+        4
+    )
+
+    aliquota_efetiva_ibs_mun = round(
+        aliquota_ibs_mun
+        * (1 - reducao_ibs_mun / 100),
+        4
+    )
+
+    aliquota_efetiva_cbs = round(
+        aliquota_cbs
+        * (1 - reducao_cbs / 100),
+        4
+    )
+
+    # ==========================================
+    # VALORES CALCULADOS
+    #
+    # IMPORTANTE:
+    # usa a alíquota EFETIVA
+    # ==========================================
     valor_ibs_uf = round(
-        valor_bc * aliquota_ibs_uf / 100,
+        valor_bc
+        * aliquota_efetiva_ibs_uf
+        / 100,
         2
     )
 
     valor_ibs_mun = round(
-        valor_bc * aliquota_ibs_mun / 100,
+        valor_bc
+        * aliquota_efetiva_ibs_mun
+        / 100,
         2
     )
 
@@ -432,8 +504,44 @@ def gerar_ibscbs(
     )
 
     valor_cbs = round(
-        valor_bc * aliquota_cbs / 100,
+        valor_bc
+        * aliquota_efetiva_cbs
+        / 100,
         2
+    )
+
+    # ==========================================
+    # LOG DE CÁLCULO
+    # ==========================================
+    log(
+        f"IBS/CBS cálculo | "
+        f"Produto={item.get('id')} | "
+        f"CST={cst} | "
+        f"cClassTrib={cclass_trib}"
+    )
+
+    log(
+        f"IBS UF | "
+        f"Nominal={aliquota_ibs_uf:.4f}% | "
+        f"Redução={reducao_ibs_uf:.4f}% | "
+        f"Efetiva={aliquota_efetiva_ibs_uf:.4f}% | "
+        f"Valor={valor_ibs_uf:.2f}"
+    )
+
+    log(
+        f"IBS Município | "
+        f"Nominal={aliquota_ibs_mun:.4f}% | "
+        f"Redução={reducao_ibs_mun:.4f}% | "
+        f"Efetiva={aliquota_efetiva_ibs_mun:.4f}% | "
+        f"Valor={valor_ibs_mun:.2f}"
+    )
+
+    log(
+        f"CBS | "
+        f"Nominal={aliquota_cbs:.4f}% | "
+        f"Redução={reducao_cbs:.4f}% | "
+        f"Efetiva={aliquota_efetiva_cbs:.4f}% | "
+        f"Valor={valor_cbs:.2f}"
     )
 
     # ==========================================
@@ -484,6 +592,28 @@ def gerar_ibscbs(
         f"{aliquota_ibs_uf:.4f}"
     )
 
+    # ==========================================
+    # REDUÇÃO IBS UF
+    # ==========================================
+    if cst == "200":
+
+        gred_ibs_uf = criar_elemento(
+            gibs_uf,
+            "gRed"
+        )
+
+        criar_elemento(
+            gred_ibs_uf,
+            "pRedAliq",
+            f"{reducao_ibs_uf:.4f}"
+        )
+
+        criar_elemento(
+            gred_ibs_uf,
+            "pAliqEfet",
+            f"{aliquota_efetiva_ibs_uf:.4f}"
+        )
+
     criar_elemento(
         gibs_uf,
         "vIBSUF",
@@ -503,6 +633,28 @@ def gerar_ibscbs(
         "pIBSMun",
         f"{aliquota_ibs_mun:.4f}"
     )
+
+    # ==========================================
+    # REDUÇÃO IBS MUNICÍPIO
+    # ==========================================
+    if cst == "200":
+
+        gred_ibs_mun = criar_elemento(
+            gibs_mun,
+            "gRed"
+        )
+
+        criar_elemento(
+            gred_ibs_mun,
+            "pRedAliq",
+            f"{reducao_ibs_mun:.4f}"
+        )
+
+        criar_elemento(
+            gred_ibs_mun,
+            "pAliqEfet",
+            f"{aliquota_efetiva_ibs_mun:.4f}"
+        )
 
     criar_elemento(
         gibs_mun,
@@ -533,17 +685,43 @@ def gerar_ibscbs(
         f"{aliquota_cbs:.4f}"
     )
 
+    # ==========================================
+    # REDUÇÃO CBS
+    # ==========================================
+    if cst == "200":
+
+        gred_cbs = criar_elemento(
+            gcbs,
+            "gRed"
+        )
+
+        criar_elemento(
+            gred_cbs,
+            "pRedAliq",
+            f"{reducao_cbs:.4f}"
+        )
+
+        criar_elemento(
+            gred_cbs,
+            "pAliqEfet",
+            f"{aliquota_efetiva_cbs:.4f}"
+        )
+
     criar_elemento(
         gcbs,
         "vCBS",
         f"{valor_cbs:.2f}"
     )
 
+    # ==========================================
+    # LOG FINAL
+    # ==========================================
     log(
         f"IBS/CBS produto {item.get('id')} | "
         f"BC={valor_bc:.2f} | "
         f"IBSUF={valor_ibs_uf:.2f} | "
         f"IBSMun={valor_ibs_mun:.2f} | "
+        f"IBS={valor_ibs:.2f} | "
         f"CBS={valor_cbs:.2f}"
     )
 
