@@ -1122,7 +1122,44 @@ def gerar_xml_nfce(
         )
 
         preco = float(
-            item["preco"]
+            item.get(
+                "valor_unitario_fiscal",
+                item["preco"]
+            )
+        )
+
+        valor_total_item = float(
+            item.get(
+                "valor_total_fiscal",
+                quantidade * preco
+            )
+        )
+
+        unidade_fiscal = (
+            str(
+                item.get(
+                    "unidade_fiscal",
+                    "UN"
+                )
+            )
+            .strip()
+            .upper()
+        )
+
+        eh_produto_peso = bool(
+            item.get(
+                "eh_produto_peso"
+            )
+        )
+
+        log(
+            f"ITEM XML | "
+            f"ID={item.get('id')} | "
+            f"Peso={eh_produto_peso} | "
+            f"uCom={unidade_fiscal} | "
+            f"qCom={quantidade:.4f} | "
+            f"vUnCom={preco:.10f} | "
+            f"vProd={valor_total_item:.2f}"
         )
 
         if len(ncm) != 8:
@@ -1188,7 +1225,7 @@ def gerar_xml_nfce(
         criar_elemento(
             prod,
             "uCom",
-            "UN"
+            unidade_fiscal
         )
 
         criar_elemento(
@@ -1200,12 +1237,22 @@ def gerar_xml_nfce(
         criar_elemento(
             prod,
             "vUnCom",
-            f"{preco:.4f}"
+            f"{preco:.10f}".rstrip("0").rstrip(".")
         )
 
-        v_prod = (
-            quantidade *
-            preco
+        # ==========================================
+        # VALOR TOTAL DO PRODUTO
+        #
+        # Produto normal:
+        # quantidade * preço
+        #
+        # Produto por peso:
+        # usa exatamente o valor cobrado na venda
+        # ==========================================
+
+        v_prod = round(
+            valor_total_item,
+            2
         )
 
         criar_elemento(
@@ -1223,7 +1270,7 @@ def gerar_xml_nfce(
         criar_elemento(
             prod,
             "uTrib",
-            "UN"
+            unidade_fiscal
         )
 
         criar_elemento(
@@ -1235,7 +1282,7 @@ def gerar_xml_nfce(
         criar_elemento(
             prod,
             "vUnTrib",
-            f"{preco:.4f}"
+            f"{preco:.10f}".rstrip("0").rstrip(".")
         )
 
         criar_elemento(
