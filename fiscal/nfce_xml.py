@@ -1179,50 +1179,89 @@ def gerar_xml_nfce(
 
     log("Emitente concluído")
 
-    # ==========================================
-    # DESTINATÁRIO
-    # ==========================================
-    cpf = somente_numeros(
-        venda.get(
-            "cpf_consumidor"
-        )
-    )
-
-    if cpf:
-
-        log(
-            f"Gerando destinatário CPF: {cpf}"
-        )
-
-        if len(cpf) != 11:
-
-            raise Exception(
-                "CPF do consumidor inválido"
+        # ==========================================
+        # DESTINATÁRIO
+        # CPF OU CNPJ
+        # ==========================================
+        documento_consumidor = somente_numeros(
+            venda.get(
+                "cpf_consumidor"
             )
-
-        dest = criar_elemento(
-            infNFe,
-            "dest"
         )
-
-        criar_elemento(
-            dest,
-            "CPF",
-            cpf
-        )
-
-        criar_elemento(
-            dest,
-            "indIEDest",
-            "9"
-        )
-
-    else:
-
-        log(
-            "NFC-e sem identificação "
-            "do consumidor"
-        )
+        
+        if documento_consumidor:
+        
+            # ======================================
+            # CPF
+            # ======================================
+            if len(documento_consumidor) == 11:
+        
+                log(
+                    f"Gerando destinatário CPF: "
+                    f"{documento_consumidor}"
+                )
+        
+                dest = criar_elemento(
+                    infNFe,
+                    "dest"
+                )
+        
+                criar_elemento(
+                    dest,
+                    "CPF",
+                    documento_consumidor
+                )
+        
+                criar_elemento(
+                    dest,
+                    "indIEDest",
+                    "9"
+                )
+        
+            # ======================================
+            # CNPJ
+            # ======================================
+            elif len(documento_consumidor) == 14:
+        
+                log(
+                    f"Gerando destinatário CNPJ: "
+                    f"{documento_consumidor}"
+                )
+        
+                dest = criar_elemento(
+                    infNFe,
+                    "dest"
+                )
+        
+                criar_elemento(
+                    dest,
+                    "CNPJ",
+                    documento_consumidor
+                )
+        
+                criar_elemento(
+                    dest,
+                    "indIEDest",
+                    "9"
+                )
+        
+            # ======================================
+            # DOCUMENTO INVÁLIDO
+            # ======================================
+            else:
+        
+                raise Exception(
+                    "Documento do consumidor inválido. "
+                    "Informe CPF com 11 dígitos ou "
+                    "CNPJ com 14 dígitos."
+                )
+        
+        else:
+        
+            log(
+                "NFC-e sem identificação "
+                "do consumidor"
+            )
 
     # ==========================================
     # PRODUTOS
