@@ -1179,89 +1179,78 @@ def gerar_xml_nfce(
 
     log("Emitente concluído")
 
-        # ==========================================
-        # DESTINATÁRIO
-        # CPF OU CNPJ
-        # ==========================================
-        documento_consumidor = somente_numeros(
-            venda.get(
-                "cpf_consumidor"
-            )
-        )
-        
-        if documento_consumidor:
-        
-            # ======================================
-            # CPF
-            # ======================================
-            if len(documento_consumidor) == 11:
-        
-                log(
-                    f"Gerando destinatário CPF: "
-                    f"{documento_consumidor}"
-                )
-        
-                dest = criar_elemento(
-                    infNFe,
-                    "dest"
-                )
-        
-                criar_elemento(
-                    dest,
-                    "CPF",
-                    documento_consumidor
-                )
-        
-                criar_elemento(
-                    dest,
-                    "indIEDest",
-                    "9"
-                )
-        
-            # ======================================
-            # CNPJ
-            # ======================================
-            elif len(documento_consumidor) == 14:
-        
-                log(
-                    f"Gerando destinatário CNPJ: "
-                    f"{documento_consumidor}"
-                )
-        
-                dest = criar_elemento(
-                    infNFe,
-                    "dest"
-                )
-        
-                criar_elemento(
-                    dest,
-                    "CNPJ",
-                    documento_consumidor
-                )
-        
-                criar_elemento(
-                    dest,
-                    "indIEDest",
-                    "9"
-                )
-        
-            # ======================================
-            # DOCUMENTO INVÁLIDO
-            # ======================================
-            else:
-        
-                raise Exception(
-                    "Documento do consumidor inválido. "
-                    "Informe CPF com 11 dígitos ou "
-                    "CNPJ com 14 dígitos."
-                )
-        
-        else:
-        
+    # ==========================================
+    # DESTINATÁRIO
+    # CPF OU CNPJ
+    # ==========================================
+    documento_consumidor = somente_numeros(
+        venda.get("cpf_consumidor")
+    )
+
+    if documento_consumidor:
+
+        if len(documento_consumidor) == 11:
+
             log(
-                "NFC-e sem identificação "
-                "do consumidor"
+                f"Gerando destinatário CPF: "
+                f"{documento_consumidor}"
             )
+
+            dest = criar_elemento(
+                infNFe,
+                "dest"
+            )
+
+            criar_elemento(
+                dest,
+                "CPF",
+                documento_consumidor
+            )
+
+            criar_elemento(
+                dest,
+                "indIEDest",
+                "9"
+            )
+
+        elif len(documento_consumidor) == 14:
+
+            log(
+                f"Gerando destinatário CNPJ: "
+                f"{documento_consumidor}"
+            )
+
+            dest = criar_elemento(
+                infNFe,
+                "dest"
+            )
+
+            criar_elemento(
+                dest,
+                "CNPJ",
+                documento_consumidor
+            )
+
+            criar_elemento(
+                dest,
+                "indIEDest",
+                "9"
+            )
+
+        else:
+
+            raise Exception(
+                "Documento do consumidor inválido. "
+                "Informe CPF com 11 dígitos ou "
+                "CNPJ com 14 dígitos."
+            )
+
+    else:
+
+        log(
+            "NFC-e sem identificação "
+            "do consumidor"
+        )
 
     # ==========================================
     # PRODUTOS
