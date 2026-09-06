@@ -734,6 +734,124 @@ def gerar_ibscbs(
     }
 
 # ==========================================
+# TRIBUTOS APROXIMADOS
+# LEI 12.741/2012
+# ==========================================
+def calcular_tributos_aproximados(
+    item,
+    valor_produto
+):
+    """
+    Calcula o valor aproximado dos tributos incidentes
+    para informação ao consumidor.
+
+    IMPORTANTE:
+    Este cálculo é informativo e NÃO altera:
+    ICMS, PIS, COFINS, IBS, CBS ou o valor da NFC-e.
+
+    As alíquotas devem chegar no item a partir da
+    tabela tributária utilizada pelo sistema.
+    """
+
+    valor_produto = round(
+        float(valor_produto or 0),
+        2
+    )
+
+    # ==========================================
+    # ALÍQUOTAS APROXIMADAS
+    # ==========================================
+
+    aliquota_federal = float(
+        item.get(
+            "tributos_federal_percentual"
+        ) or 0
+    )
+
+    aliquota_estadual = float(
+        item.get(
+            "tributos_estadual_percentual"
+        ) or 0
+    )
+
+    aliquota_municipal = float(
+        item.get(
+            "tributos_municipal_percentual"
+        ) or 0
+    )
+
+    # ==========================================
+    # VALIDAÇÃO
+    # ==========================================
+
+    for nome, aliquota in [
+        ("federal", aliquota_federal),
+        ("estadual", aliquota_estadual),
+        ("municipal", aliquota_municipal)
+    ]:
+
+        if aliquota < 0 or aliquota > 100:
+            raise Exception(
+                f"Alíquota aproximada {nome} inválida "
+                f"no produto {item.get('id')}: "
+                f"{aliquota}%"
+            )
+
+    # ==========================================
+    # CÁLCULO
+    # ==========================================
+
+    valor_federal = round(
+        valor_produto
+        * aliquota_federal
+        / 100,
+        2
+    )
+
+    valor_estadual = round(
+        valor_produto
+        * aliquota_estadual
+        / 100,
+        2
+    )
+
+    valor_municipal = round(
+        valor_produto
+        * aliquota_municipal
+        / 100,
+        2
+    )
+
+    valor_total = round(
+        valor_federal
+        + valor_estadual
+        + valor_municipal,
+        2
+    )
+
+    log(
+        f"TRIBUTOS APROXIMADOS | "
+        f"Produto={item.get('id')} | "
+        f"Base={valor_produto:.2f} | "
+        f"Federal={aliquota_federal:.4f}% "
+        f"(R$ {valor_federal:.2f}) | "
+        f"Estadual={aliquota_estadual:.4f}% "
+        f"(R$ {valor_estadual:.2f}) | "
+        f"Municipal={aliquota_municipal:.4f}% "
+        f"(R$ {valor_municipal:.2f}) | "
+        f"Total=R$ {valor_total:.2f}"
+    )
+
+    return {
+        "federal": valor_federal,
+        "estadual": valor_estadual,
+        "municipal": valor_municipal,
+        "total": valor_total
+    }
+
+
+
+# ==========================================
 # XML NFC-e
 # ==========================================
 def gerar_xml_nfce(
@@ -1266,6 +1384,12 @@ def gerar_xml_nfce(
     total_ibs_mun = 0.0
     total_ibs = 0.0
     total_cbs = 0.0
+    
+    # Lei 12.741/2012
+    total_tributos_aproximados = 0.0
+    total_tributos_federal = 0.0
+    total_tributos_estadual = 0.0
+    total_tributos_municipal = 0.0
 
     for idx, item in enumerate(
         itens,
@@ -1505,11 +1629,43 @@ def gerar_xml_nfce(
             det,
             "imposto"
         )
-
+        
+        # ==========================================
+        # TRIBUTOS APROXIMADOS
+        # LEI 12.741/2012
+        # ==========================================
+        
+        tributos_aproximados = (
+            calcular_tributos_aproximados(
+                item,
+                v_prod
+            )
+        )
+        
+        v_tot_trib_item = (
+            tributos_aproximados["total"]
+        )
+        
         criar_elemento(
             imposto,
             "vTotTrib",
-            "0.00"
+            f"{v_tot_trib_item:.2f}"
+        )
+        
+        total_tributos_aproximados += (
+            v_tot_trib_item
+        )
+        
+        total_tributos_federal += (
+            tributos_aproximados["federal"]
+        )
+        
+        total_tributos_estadual += (
+            tributos_aproximados["estadual"]
+        )
+        
+        total_tributos_municipal += (
+            tributos_aproximados["municipal"]
         )
 
         # ==========================================
@@ -1679,7 +1835,7 @@ def gerar_xml_nfce(
         ),
         (
             "vTotTrib",
-            "0.00"
+            f"{total_tributos_aproximados:.2f}"
         )
     ]
 
