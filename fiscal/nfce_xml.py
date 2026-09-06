@@ -10,7 +10,11 @@ import random
 # CONSTANTES XML
 # ==========================================
 NFE_NS = "http://www.portalfiscal.inf.br/nfe"
+# ==========================================
+# TRIBUTOS APROXIMADOS - LEI 12.741/2012
+# ==========================================
 
+ALIQUOTA_TRIBUTOS_APROXIMADOS = 6.00
 
 # ==========================================
 # LOG
@@ -742,15 +746,21 @@ def calcular_tributos_aproximados(
     valor_produto
 ):
     """
-    Calcula o valor aproximado dos tributos incidentes
+    Calcula o valor aproximado dos tributos
     para informação ao consumidor.
 
     IMPORTANTE:
-    Este cálculo é informativo e NÃO altera:
-    ICMS, PIS, COFINS, IBS, CBS ou o valor da NFC-e.
+    É apenas informativo.
 
-    As alíquotas devem chegar no item a partir da
-    tabela tributária utilizada pelo sistema.
+    NÃO altera:
+    - ICMS
+    - PIS
+    - COFINS
+    - IBS
+    - CBS
+    - preço do produto
+    - total da NFC-e
+    - valor do pagamento
     """
 
     valor_produto = round(
@@ -758,74 +768,20 @@ def calcular_tributos_aproximados(
         2
     )
 
-    # ==========================================
-    # ALÍQUOTAS APROXIMADAS
-    # ==========================================
-
-    aliquota_federal = float(
-        item.get(
-            "tributos_federal_percentual"
-        ) or 0
+    aliquota = float(
+        ALIQUOTA_TRIBUTOS_APROXIMADOS
     )
 
-    aliquota_estadual = float(
-        item.get(
-            "tributos_estadual_percentual"
-        ) or 0
-    )
-
-    aliquota_municipal = float(
-        item.get(
-            "tributos_municipal_percentual"
-        ) or 0
-    )
-
-    # ==========================================
-    # VALIDAÇÃO
-    # ==========================================
-
-    for nome, aliquota in [
-        ("federal", aliquota_federal),
-        ("estadual", aliquota_estadual),
-        ("municipal", aliquota_municipal)
-    ]:
-
-        if aliquota < 0 or aliquota > 100:
-            raise Exception(
-                f"Alíquota aproximada {nome} inválida "
-                f"no produto {item.get('id')}: "
-                f"{aliquota}%"
-            )
-
-    # ==========================================
-    # CÁLCULO
-    # ==========================================
-
-    valor_federal = round(
-        valor_produto
-        * aliquota_federal
-        / 100,
-        2
-    )
-
-    valor_estadual = round(
-        valor_produto
-        * aliquota_estadual
-        / 100,
-        2
-    )
-
-    valor_municipal = round(
-        valor_produto
-        * aliquota_municipal
-        / 100,
-        2
-    )
+    if aliquota < 0 or aliquota > 100:
+        raise Exception(
+            f"Alíquota de tributos aproximados inválida: "
+            f"{aliquota}%"
+        )
 
     valor_total = round(
-        valor_federal
-        + valor_estadual
-        + valor_municipal,
+        valor_produto
+        * aliquota
+        / 100,
         2
     )
 
@@ -833,22 +789,16 @@ def calcular_tributos_aproximados(
         f"TRIBUTOS APROXIMADOS | "
         f"Produto={item.get('id')} | "
         f"Base={valor_produto:.2f} | "
-        f"Federal={aliquota_federal:.4f}% "
-        f"(R$ {valor_federal:.2f}) | "
-        f"Estadual={aliquota_estadual:.4f}% "
-        f"(R$ {valor_estadual:.2f}) | "
-        f"Municipal={aliquota_municipal:.4f}% "
-        f"(R$ {valor_municipal:.2f}) | "
+        f"Aliquota={aliquota:.4f}% | "
         f"Total=R$ {valor_total:.2f}"
     )
 
     return {
-        "federal": valor_federal,
-        "estadual": valor_estadual,
-        "municipal": valor_municipal,
+        "federal": valor_total,
+        "estadual": 0.0,
+        "municipal": 0.0,
         "total": valor_total
     }
-
 
 
 # ==========================================
