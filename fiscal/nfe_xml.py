@@ -305,11 +305,33 @@ def gerar_xml_nfe(dados):
         "1"
     )
 
+    ind_pres = str(dados.get("ind_pres", "9")).strip()
+
     criar_elemento(
         ide,
         "indPres",
-        str(dados.get("ind_pres", "9")).strip()
+        ind_pres
     )
+
+    # Indicador de intermediador da operação, conforme leiaute NF-e 4.00.
+    # O valor deve vir dos dados da venda:
+    # 0 = operação sem intermediador.
+    # 1 = operação em site/plataforma de terceiros.
+    if ind_pres in ("1", "2", "3", "4", "9"):
+        ind_intermed = str(dados.get("ind_intermed", "0")).strip()
+
+        if ind_intermed not in ("0", "1"):
+            raise Exception(
+                "Indicador do intermediador inválido. Informe 0 ou 1."
+            )
+
+        criar_elemento(
+            ide,
+            "indIntermed",
+            ind_intermed
+        )
+
+        log(f"Indicador do intermediador NF-e: {ind_intermed}")
 
     criar_elemento(
         ide,
@@ -498,14 +520,12 @@ def gerar_xml_nfe(dados):
         raise Exception("UF do destinatário inválida.")
 
     criar_elemento(ender_dest, "xLgr", campos_endereco["xLgr"])
-    criar_elemento(ender_dest, "nro", campos_endereco["nro"])
 
-    # Ordem exigida pelo schema NF-e: xLgr, nro, xCpl, xBairro...
     complemento_dest = limpar_texto_xml(destinatario.get("complemento"))
     if complemento_dest:
         criar_elemento(ender_dest, "xCpl", complemento_dest)
 
-    for campo in ("xBairro", "cMun", "xMun", "UF", "CEP"):
+    for campo in ("nro", "xBairro", "cMun", "xMun", "UF", "CEP"):
         criar_elemento(ender_dest, campo, campos_endereco[campo])
 
     criar_elemento(ender_dest, "cPais", "1058")
@@ -1295,3 +1315,4 @@ def gerar_xml_nfe(dados):
     )
 
     return xml_bytes
+
