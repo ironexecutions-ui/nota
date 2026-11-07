@@ -8,7 +8,60 @@ NAMESPACE_NFE = "http://www.portalfiscal.inf.br/nfe"
 
 
 def log_pynfe(msg):
-    print(f"[PyNFe] {msg}")
+    print(f"[PyNFe-NFE] {msg}")
+
+
+class ErroSEFAZNFe(Exception):
+    """Erro de retorno da SEFAZ, preservando o código e o motivo."""
+
+    def __init__(self, cstat, motivo, xml_retorno=None):
+        self.cstat = str(cstat) if cstat is not None else None
+        self.motivo = motivo or "Motivo não informado pela SEFAZ"
+        self.xml_retorno = xml_retorno
+        super().__init__(
+            f"SEFAZ retornou cStat={self.cstat}: {self.motivo}"
+        )
+
+
+def _validar_xml_nfe(xml_element):
+    """Impede que este serviço exclusivo de NF-e transmita NFC-e."""
+
+    if not isinstance(xml_element, etree._Element):
+        raise Exception("XML NF-e inválido: elemento XML não reconhecido")
+
+    nome_raiz = etree.QName(xml_element).localname
+    if nome_raiz != "NFe":
+        raise Exception(
+            f"XML incompatível com NF-e: raiz encontrada foi {nome_raiz}"
+        )
+
+    modelo_xml = _texto(
+        xml_element,
+        "//*[local-name()='ide']/*[local-name()='mod']"
+    )
+
+    if modelo_xml != "55":
+        raise Exception(
+            f"Este serviço transmite somente NF-e modelo 55. "
+            f"Modelo encontrado no XML: {modelo_xml or 'não informado'}"
+        )
+
+    inf_nfe = xml_element.xpath("//*[local-name()='infNFe']")
+    if not inf_nfe:
+        raise Exception("XML NF-e não contém o elemento infNFe")
+
+    identificador = inf_nfe[0].get("Id", "")
+    if not identificador.startswith("NFe") or len(identificador) != 47:
+        raise Exception(
+            "Identificador da NF-e inválido. "
+            "O atributo Id deve conter NFe seguido da chave de 44 dígitos."
+        )
+
+    chave = identificador[3:]
+    if not chave.isdigit():
+        raise Exception("A chave de acesso da NF-e contém caracteres inválidos")
+
+    return chave
 
 
 def _converter_xml(xml_base):
@@ -192,11 +245,11 @@ def emitir_com_pynfe(
     certificado_senha,
     uf,
     homologacao,
-    modelo="nfce"
+    modelo="nfe"
 ):
 
     log_pynfe("========================================")
-    log_pynfe("INICIANDO EMISSÃO NFC-e COM PyNFe")
+    log_pynfe("INICIANDO ENVIO DE NF-e MODELO 55")
     log_pynfe("========================================")
 
     try:
@@ -247,6 +300,9 @@ def emitir_com_pynfe(
             f"Tag raiz recebida: {xml_element.tag}"
         )
 
+        chave_xml = _validar_xml_nfe(xml_element)
+        log_pynfe(f"XML confirmado como NF-e modelo 55 | Chave: {chave_xml}")
+
         # ==========================================
         # 3. ASSINAR XML
         # ==========================================
@@ -279,7 +335,7 @@ def emitir_com_pynfe(
         # DEBUG XML ASSINADO
         # ==========================================
 
-        DEBUG_XML_PATH = "/tmp/nfce_debug.xml"
+        DEBUG_XML_PATH = "/tmp/nfe_debug.xml"
 
         xml_debug_bytes = etree.tostring(
             xml_assinado,
@@ -342,16 +398,19 @@ def emitir_com_pynfe(
         # 5. AUTORIZAÇÃO
         # ==========================================
 
-        log_pynfe(
-            "Enviando NFC-e modelo 65 para SEFAZ..."
-        )
+        modelo_normalizado = str(modelo or "nfe").strip().lower()
 
-        modelo_normalizado = str(modelo or "nfce").strip().lower()
-        if modelo_normalizado not in ("nfce", "nfe"):
-            raise Exception(f"Modelo fiscal não suportado no PyNFe: {modelo}")
+        if modelo_normalizado != "nfe":
+            raise Exception(
+                "O pynfe_service_nfe.py aceita exclusivamente modelo 'nfe'. "
+                "A NFC-e deve continuar usando seu serviço próprio."
+            )
+
+        # Confere novamente o XML imediatamente antes da transmissão.
+        chave_xml = _validar_xml_nfe(xml_assinado)
 
         log_pynfe(
-            f"Enviando documento modelo {'65' if modelo_normalizado == 'nfce' else '55'} para SEFAZ..."
+            f"Enviando NF-e modelo 55 para SEFAZ | Chave: {chave_xml}"
         )
 
         resposta = comunicacao.autorizacao(
@@ -451,6 +510,12 @@ def emitir_com_pynfe(
                         f"HTTP SEFAZ: "
                         f"{response_http.status_code}"
                     )
+
+                    if not 200 <= int(response_http.status_code) < 300:
+                        raise Exception(
+                            f"Falha HTTP na comunicação com a SEFAZ: "
+                            f"{response_http.status_code}"
+                        )
 
                     conteudo = (
                         response_http.content
@@ -638,11 +703,11 @@ def emitir_com_pynfe(
             )
 
             log_pynfe(
-                f"cStat NFC-e: {cstat}"
+                f"cStat da NF-e: {cstat}"
             )
 
             log_pynfe(
-                f"xMotivo NFC-e: {motivo}"
+                f"Motivo da NF-e: {motivo}"
             )
 
         else:
@@ -669,10 +734,18 @@ def emitir_com_pynfe(
             "150"
         ):
 
-            raise Exception(
-                f"SEFAZ rejeitou NFC-e. "
-                f"cStat={cstat}, "
-                f"motivo={motivo}"
+            # Não repetir automaticamente nenhuma transmissão rejeitada.
+            # Em especial, cStat 656 exige interromper novas chamadas.
+            if str(cstat) == "656":
+                log_pynfe(
+                    "ALERTA: consumo indevido (656). "
+                    "Nenhuma retransmissão automática será realizada."
+                )
+
+            raise ErroSEFAZNFe(
+                cstat=cstat,
+                motivo=motivo,
+                xml_retorno=retorno_string
             )
 
         # ==========================================
@@ -692,8 +765,8 @@ def emitir_com_pynfe(
         if not protocolo:
 
             raise Exception(
-                "NFC-e autorizada mas protocolo "
-                "não foi retornado"
+                "NF-e indicada como autorizada, mas o protocolo "
+                "não foi retornado pela SEFAZ"
             )
 
         # ==========================================
@@ -723,7 +796,7 @@ def emitir_com_pynfe(
 
             raise Exception(
                 "Não foi possível identificar "
-                "a chave da NFC-e"
+                "a chave da NF-e"
             )
 
         # ==========================================
@@ -752,7 +825,7 @@ def emitir_com_pynfe(
         )
 
         log_pynfe(
-            "NFC-e AUTORIZADA"
+            "NF-e MODELO 55 AUTORIZADA"
         )
 
         log_pynfe(
