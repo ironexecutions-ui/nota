@@ -498,12 +498,14 @@ def gerar_xml_nfe(dados):
         raise Exception("UF do destinatário inválida.")
 
     criar_elemento(ender_dest, "xLgr", campos_endereco["xLgr"])
+    criar_elemento(ender_dest, "nro", campos_endereco["nro"])
 
+    # Ordem exigida pelo schema NF-e: xLgr, nro, xCpl, xBairro...
     complemento_dest = limpar_texto_xml(destinatario.get("complemento"))
     if complemento_dest:
         criar_elemento(ender_dest, "xCpl", complemento_dest)
 
-    for campo in ("nro", "xBairro", "cMun", "xMun", "UF", "CEP"):
+    for campo in ("xBairro", "cMun", "xMun", "UF", "CEP"):
         criar_elemento(ender_dest, campo, campos_endereco[campo])
 
     criar_elemento(ender_dest, "cPais", "1058")
