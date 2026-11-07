@@ -481,8 +481,15 @@ def gerar_xml_nfe(dados):
     destinatario = dados.get("destinatario") or {}
 
     documento_dest = somente_numeros(destinatario.get("documento"))
-    nome_dest = limpar_texto_xml(destinatario.get("nome"))
-
+    if tp_amb == "2":
+        nome_dest = (
+            "NF-E EMITIDA EM AMBIENTE DE "
+            "HOMOLOGACAO - SEM VALOR FISCAL"
+        )
+    else:
+        nome_dest = limpar_texto_xml(
+            destinatario.get("nome")
+        )
     if len(documento_dest) == 11:
         tag_documento = "CPF"
     elif len(documento_dest) == 14:
