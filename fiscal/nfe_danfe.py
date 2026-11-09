@@ -1,10 +1,11 @@
-
 from fpdf import FPDF
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 import os
 import re
+import qrcode
+import tempfile
 
 
 # =========================================================
@@ -292,6 +293,9 @@ def gerar_danfe_nfe(
     comercios_cadastradas para personalizar
     o documento com o nome e o logo da loja.
 
+    O QR Code inserido no quadro superior contém
+    a chave de acesso de 44 dígitos da NF-e.
+
     Não altera o XML autorizado nem transmite
     novamente a NF-e para a SEFAZ.
     """
@@ -387,7 +391,7 @@ def gerar_danfe_nfe(
     )
 
     # =====================================================
-    # 2. QUADRO DA NF-e
+    # 2. QUADRO DA NF-e COM QR CODE
     # =====================================================
 
     pdf.set_fill_color(*COR_AZUL)
@@ -401,37 +405,40 @@ def gerar_danfe_nfe(
         style="DF"
     )
 
-    pdf.set_text_color(*COR_BRANCO)
+    # O QR Code contém a chave de acesso da NF-e.
+    # Ele não substitui o QR Code oficial de consulta da SEFAZ.
+    chave_qr = _num(chave)
 
-    pdf.set_xy(160, 13)
-    pdf.set_font("Arial", "B", 8)
+    if len(chave_qr) != 44:
+        raise ValueError(
+            "A chave de acesso da NF-e deve conter exatamente 44 dígitos "
+            "para gerar o QR Code."
+        )
 
-    pdf.cell(
-        36,
-        5,
-        "NOTA FISCAL",
-        align="C"
+    qr_img = qrcode.make(chave_qr)
+
+    arquivo_qr = tempfile.NamedTemporaryFile(
+        suffix=".png",
+        delete=False
     )
 
-    pdf.set_xy(160, 20)
-    pdf.set_font("Arial", "B", 17)
+    caminho_qr = arquivo_qr.name
+    arquivo_qr.close()
 
-    pdf.cell(
-        36,
-        8,
-        str(numero),
-        align="C"
-    )
+    try:
+        qr_img.save(caminho_qr)
 
-    pdf.set_xy(160, 31)
-    pdf.set_font("Arial", "", 8)
+        pdf.image(
+            caminho_qr,
+            x=165,
+            y=12,
+            w=26,
+            h=26
+        )
 
-    pdf.cell(
-        36,
-        5,
-        f"SERIE {serie}",
-        align="C"
-    )
+    finally:
+        if os.path.exists(caminho_qr):
+            os.remove(caminho_qr)
 
     # =====================================================
     # 3. IDENTIFICAÇÃO DO DOCUMENTO
