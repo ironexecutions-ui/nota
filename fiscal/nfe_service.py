@@ -169,43 +169,46 @@ def emitir_nfe_manual(
         # FUNÇÃO INTERNA PARA BUSCAR DADOS FISCAIS
         # ==================================================
 
+
         def buscar_produto_fiscal(produto_id):
-
+        
             log(
-                f"Buscando dados fiscais do produto "
-                f"{produto_id}"
+                f"Buscando dados fiscais do produto {produto_id}"
             )
-
+        
+            # ==================================================
+            # 1. BUSCAR PRODUTO E DADOS FISCAIS
+            # ==================================================
+        
             cursor.execute(
                 """
                 SELECT
-
                     p.id,
                     p.nome,
                     p.preco,
                     p.peso,
                     p.unidade,
-
+        
                     f.tipo,
                     f.ncm,
                     f.cfop,
                     f.origem,
                     f.cst_csosn,
-
+        
                     f.cst_ibscbs,
                     f.cclass_trib,
                     f.aliquota_ibs_uf,
                     f.aliquota_ibs_mun,
                     f.aliquota_cbs
-
+        
                 FROM produtos_servicos p
-
+        
                 INNER JOIN fiscal_dados_cupons f
                     ON f.produto_id = p.id
-
+        
                 WHERE p.id = %s
                   AND f.comercio_id = %s
-
+        
                 LIMIT 1
                 """,
                 (
@@ -213,21 +216,144 @@ def emitir_nfe_manual(
                     comercio["empresa"]
                 )
             )
-
+        
             produto = cursor.fetchone()
-
+        
             if not produto:
-
                 raise Exception(
                     f"Produto {produto_id} "
-                    f"sem dados fiscais cadastrados"
+                    f"sem dados fiscais cadastrados "
+                    f"para o comércio {comercio['empresa']}."
                 )
-
-            produto["crt"] = str(
-                fiscal["crt"]
+        
+            # ==================================================
+            # 2. IDENTIFICAR CRT
+            # ==================================================
+        
+            crt = str(
+                fiscal.get("crt") or ""
             ).strip()
-
+        
+            if not crt:
+                raise Exception(
+                    "CRT do emitente não configurado."
+                )
+        
+            produto["crt"] = crt
+        
+            # ==================================================
+            # 3. IDENTIFICAR UF DO EMITENTE E DESTINATÁRIO
+            # ==================================================
+        
+            uf_emit = str(
+                comercio.get("estado") or ""
+            ).strip().upper()
+        
+            uf_dest = str(
+                destinatario.get("uf") or ""
+            ).strip().upper()
+        
+            if not uf_emit:
+                raise Exception(
+                    "UF do emitente não cadastrada. "
+                    "Não é possível determinar o CFOP."
+                )
+        
+            if not uf_dest:
+                raise Exception(
+                    "UF do destinatário não informada. "
+                    "Não é possível determinar o CFOP."
+                )
+        
+            operacao_interestadual = (
+                uf_emit != uf_dest
+            )
+        
+            # ==================================================
+            # 4. VALIDAR CFOP ORIGINAL
+            # ==================================================
+        
+            cfop_original = str(
+                produto.get("cfop") or ""
+            ).strip()
+        
+            if (
+                len(cfop_original) != 4
+                or not cfop_original.isdigit()
+            ):
+                raise Exception(
+                    f"CFOP inválido no produto {produto_id}: "
+                    f"{cfop_original or 'não informado'}."
+                )
+        
+            # Preservar o CFOP original por padrão.
+            cfop_final = cfop_original
+        
+            # ==================================================
+            # 5. AJUSTE ESPECÍFICO DE CFOP
+            # ==================================================
+        
+            # 5102: venda de mercadoria adquirida ou recebida
+            # de terceiros, em operação interna.
+            #
+            # 6102: correspondente para operação interestadual.
+            #
+            # Esta conversão só é feita para esse caso específico.
+            # Outros CFOPs não são alterados automaticamente.
+        
+            if operacao_interestadual:
+        
+                if cfop_original == "5102":
+        
+                    cfop_final = "6102"
+        
+            produto["cfop"] = cfop_final
+        
+            # ==================================================
+            # 6. VALIDAR COMPATIBILIDADE BÁSICA DO CFOP
+            # ==================================================
+        
+            if operacao_interestadual:
+        
+                if cfop_final.startswith("5"):
+        
+                    raise Exception(
+                        f"CFOP {cfop_final} é de operação interna, "
+                        f"mas a venda é interestadual "
+                        f"({uf_emit} para {uf_dest}). "
+                        f"Verifique a classificação fiscal do produto."
+                    )
+        
+            else:
+        
+                if cfop_final.startswith("6"):
+        
+                    raise Exception(
+                        f"CFOP {cfop_final} é de operação interestadual, "
+                        f"mas a venda é interna "
+                        f"({uf_emit} para {uf_dest}). "
+                        f"Verifique a classificação fiscal do produto."
+                    )
+        
+            # ==================================================
+            # 7. LOG DOS DADOS FISCAIS
+            # ==================================================
+        
+            log(
+                "DADOS FISCAIS DO PRODUTO | "
+                f"ID={produto_id} | "
+                f"Nome={produto.get('nome')} | "
+                f"NCM={produto.get('ncm')} | "
+                f"CFOP Original={cfop_original} | "
+                f"CFOP Final={cfop_final} | "
+                f"CRT={crt} | "
+                f"UF Emitente={uf_emit} | "
+                f"UF Destinatário={uf_dest} | "
+                f"Operação={'INTERESTADUAL' if operacao_interestadual else 'INTERNA'}"
+            )
+        
             return produto
+
 
         # ==================================================
         # 2.1 PRODUTOS NORMAIS
