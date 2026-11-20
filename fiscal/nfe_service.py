@@ -1,6 +1,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import os
+import re
 
 from fastapi import APIRouter, Header, HTTPException, Body
 
@@ -1196,9 +1197,39 @@ def emitir_nfe_manual(
         log(str(e))
         log("========================================")
 
+        mensagem_erro = str(e).strip() or (
+            f"Falha interna durante a emissão da NF-e ({type(e).__name__})."
+        )
+
+        # Erros que identificam um produto normalmente exigem correção
+        # do cadastro fiscal daquele produto no painel do comércio.
+        produto_match = re.search(
+            r"\bproduto\s*#?\s*(\d+)\b",
+            mensagem_erro,
+            flags=re.IGNORECASE
+        )
+
+        if produto_match:
+            produto_id_erro = int(produto_match.group(1))
+
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "codigo": "DADOS_FISCAIS_PRODUTO",
+                    "mensagem": mensagem_erro,
+                    "produtos": [
+                        {
+                            "produto_id": produto_id_erro,
+                            "id": produto_id_erro,
+                            "nome": f"Produto {produto_id_erro}"
+                        }
+                    ]
+                }
+            )
+
         raise HTTPException(
             status_code=500,
-            detail=str(e)
+            detail=mensagem_erro
         )
 
     finally:
